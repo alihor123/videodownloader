@@ -3,35 +3,35 @@ import styles from './MainPage.module.css'
 import Header from './Header/Header'
 
 const QUALITY_OPTIONS = [
-  { res: '360p', size: '120 MB', format: 'MP4' },
-  { res: '720p', size: '350 MB', format: 'MP4' },
-  { res: '1080p', size: '800 MB', format: 'MP4' },
-  { res: '2160p (4K)', size: '2.5 GB', format: 'MP4' },
-
+  { id: 'q_360', res: '360p', size: '120 MB', format: 'MP4' },
+  { id: 'q_720', res: '720p', size: '350 MB', format: 'MP4' },
+  { id: 'q_1080', res: '1080p', size: '800 MB', format: 'MP4' },
+  { id: 'q_4k', res: '2160p (4K)', size: '2.5 GB', format: 'MP4' },
   
-
 ]
 
 export default function MainPage() {
   const [searchQuery, setSearchQuery] = useState('')
+  const [selectedId, setSelectedId] = useState(QUALITY_OPTIONS[0].id)
 
   return (
     <main className={styles.main}>
       <div className={styles.container}>
         <Header />
+        
+        <div className={styles.searchContainer}>
+          <input
+            className={styles.searchInput}
+            type="text"
+            placeholder="Вставьте ссылку на видео"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+          <button className={styles.searchButton}>Найти</button>
+        </div>
+
+        
         <div className={styles.content}>
-
-          <div className={styles.searchContainer}>
-            <input
-              className={styles.searchInput}
-              type="text"
-              placeholder="Вставьте ссылку на видео"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-            <button className={styles.searchButton}>Найти</button>
-          </div>
-
           <div className={styles.videoInfo}>
             <div className={styles.videoTitle}>GTX 1060 БОЛЬШЕ НЕ ТАЩИТ?! | Nvidia GeForce GTX 1060 3gb в 2025 году</div>
             <div className={styles.videoMeta}>
@@ -45,16 +45,19 @@ export default function MainPage() {
 
           <div className={styles.qualityList}>
             {QUALITY_OPTIONS.map((item) => (
-              <div className={styles.qualityItem} key={item.res}>
+              <button
+                className={`${styles.qualityItem} ${selectedId === item.id ? styles.selected : ''}`}
+                key={item.id}
+                onClick={() => setSelectedId(item.id)}
+              >
                 <div className={styles.itemDescription}>
                   <div className={styles.res}>{item.res}</div>
                   <div className={styles.qualitySize}>{item.size}</div>
                   <div className={styles.format}>{item.format}</div>
                 </div>
-              </div>
+              </button>
             ))}
           </div>
-
           <button className={styles.download}>Скачать</button>
         </div>
       </div>

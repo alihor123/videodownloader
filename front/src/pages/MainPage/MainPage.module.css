@@ -8,7 +8,7 @@
 }
 
 .content {
-    margin: 10px 20px 10px 20px;
+    margin: 8px 20px 10px 20px;
     display: flex;
     flex-direction: column;
     width: 100%;
@@ -22,18 +22,24 @@
 }
 
 .searchContainer {
-    height: 40px;
+    flex-shrink: 0;
     display: flex;
     align-items: center;
     gap: 10px;
     width: 100%;
-    flex-shrink: 0;
+    border-radius: 25px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    box-shadow: var(--shadow-soft);
+    padding: 12px 12px;
+    margin-top: 10px;
 }
 
 .searchInput {
+    height: 40px;
+    flex-shrink: 0;
     border: 1px solid var(--border-strong);
     flex: 1;
-    height: 100%;
     border-radius: 18px;
     color: var(--text-main);
     font-family: var(--font-base);
@@ -132,6 +138,14 @@
     border-radius: 14px;
     background: var(--surface);
     padding: 0px 15px;
+    cursor: pointer;
+    box-shadow: var(--shadow-soft);
+    transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
+}
+
+.selected {
+    background: var(--primary-soft);
+    border-color: var(--primary);
 }
 
 .itemDescription {
@@ -167,6 +181,7 @@
 }
 
 .download {
+    width: 100%;
     height: 45px;
     margin-top: 15px;
     flex-shrink: 0;
@@ -176,7 +191,7 @@
     color: var(--success);
     font-family: var(--font-heading);
     font-weight: 700;
-    font-size: 14px;
+    font-size: 16px;
     cursor: pointer;
     transition: transform 0.15s, box-shadow 0.15s;
     will-change: transform;
@@ -200,10 +215,12 @@
 
     .content {
         padding: 20px 30px;
+        height: auto;
     }
 
     .searchContainer {
-        height: 60px;
+        padding: 15px 15px;
+        border-radius: 30px;
     }
 
     .searchButton {
@@ -213,6 +230,7 @@
     }
 
     .searchInput {
+        height: 60px;
         font-size: 18px;
         border-radius: 25px;
     }
@@ -233,6 +251,7 @@
     .qualityList {
         margin-top: 18px;
         gap: 12px;
+        height: auto;
     }
 
     .qualityHeader {
@@ -243,12 +262,17 @@
     .qualityItem {
         display: flex;
         align-items: center;
-        width: 100;
+        width: 100%;
         height: 60px;
         border: 1px solid var(--border-strong);
         border-radius: 22px;
         background: var(--surface);
-        padding: 0px 15px 0px 15px;
+        padding: 0px 15px;
+    }
+
+    .selected {
+        background: var(--primary-soft);
+        border-color: var(--primary);
     }
 
     .itemDescription {
@@ -284,17 +308,9 @@
     }
 
     .download {
-        height: 60px;
-        margin-top: 18px;
-        border-radius: 18px;
-        font-size: 18px;
-    }
-
-    .qualityList {
-        height: auto;
-    }
-
-    .download {
-        width: auto;
+        width: 250px;
+        height: 55px;
+        border-radius: 20px;
+        margin-left: auto;
     }
 }
