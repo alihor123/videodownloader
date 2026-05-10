@@ -117,11 +117,18 @@ async def get_video_info(url: str = Query(..., description="Ссылка на в
     else:
         duration_str = "0:00"
 
-    # 6. Возвращаем всё самое нужное
+    # 6. Готовим просмотры с пробелами (1 234 567 просмотров)
+    raw_views = info.get('view_count', 0)
+    if raw_views:
+        views_str = f"{raw_views:,}".replace(',', ' ') + " просмотров"
+    else:
+        views_str = ""
+
+    # 7. Возвращаем всё самое нужное
     return {
         'title': info.get('title', 'Без названия'),
-        'duration': duration_str,      
-        'view_count': info.get('view_count', 0),
+        'duration': duration_str,
+        'views': views_str,
         'uploader': info.get('uploader', 'Неизвестный автор'),
         'formats': formats,
     }
