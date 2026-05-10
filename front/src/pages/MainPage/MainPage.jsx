@@ -2,7 +2,7 @@ import { useState } from 'react'
 import styles from './MainPage.module.css'
 import Header from './Header/Header'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading.js'
-import { getVideoInfo } from '../../services/yt.api.js'
+import { getVideoInfo, downloadVideo } from '../../services/yt.api.js'
 import { ApiError } from '../../services/api.js'
 import Loading from "../../components/Loading/Loading.jsx"
 
@@ -64,6 +64,37 @@ export default function MainPage() {
     }
   }
 
+  // Скачивает видео в выбранном качестве и сохраняет на устройство.
+  async function downloadCurrentVideo() {
+    const url = searchQuery.trim()
+    if (!url || selectedHeight == null) return
+
+    onLoadingChange(true)
+
+    try {
+      const { blob, filename } = await downloadVideo(url, selectedHeight)
+
+      // Создаём временную ссылку и кликаем — браузер сам скачает файл
+      const downloadUrl = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = downloadUrl
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(downloadUrl)
+    } catch (error) {
+      if (error instanceof ApiError) {
+        alert(error.message)
+        return
+      }
+
+      throw error
+    } finally {
+      onLoadingChange(false)
+    }
+  }
+
   return (
     <main className={styles.main}>
       <div className={styles.container}>
@@ -100,7 +131,7 @@ export default function MainPage() {
               {buildQualityItems()}
             </div>
 
-            <button className={styles.download}>Скачать</button>
+            <button className={styles.download} onClick={downloadCurrentVideo}>Скачать</button>
           </div>
         )}
 
