@@ -1,12 +1,61 @@
-# Большие бинарные файлы (ffmpeg, ffprobe)
+# Dependencies
+node_modules/
+front/node_modules/
+
+# React / Vite build output
+dist/
+build/
+front/dist/
+front/build/
+
+# Python cache and virtual environments
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+.venv/
+venv/
+env/
+ENV/
+back/.venv/
+
+# Python tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Environment and local secrets
+.env
+.env.*
+!.env.example
+back/yt_cookies.txt
+
+# Logs
+*.log
+back/backend.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Local binaries and large archives
 back/bin/
 back/ffmpeg.zip
 
-# Логи
-*.log
-back/backend.log
+# Downloaded and temporary media
+downloads/
+tmp/
+temp/
+*.part
+*.mp4
+*.m4a
+*.webm
 
-# Кэш Python
-__pycache__/
-*.pyc
-*.pyo
+# Editor / OS files
+.vscode/
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
