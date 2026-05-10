@@ -5,6 +5,7 @@ import os
 import tempfile
 import asyncio
 import re
+from pathlib import Path
 
 
 # Роутер для эндпоинтов, связанных с YouTube
@@ -125,12 +126,15 @@ async def get_video_info(url: str = Query(..., description="Ссылка на в
         views_str = ""
 
     # 7. Возвращаем всё самое нужное
+    safe_title = re.sub(r'[^\w ._\-()]', '', info.get('title', 'video'))
+
     return {
         'title': info.get('title', 'Без названия'),
         'duration': duration_str,
         'views': views_str,
         'uploader': info.get('uploader', 'Неизвестный автор'),
         'formats': formats,
+        'filename': f"{safe_title}.mp4",   # Имя файла для скачивания
     }
 
 
@@ -148,16 +152,28 @@ async def download_video(
     # 1. Готовим строку формата (лучшее видео <= height + лучший звук)
     format_string = f"bestvideo[height<={height}]+bestaudio/best[height<={height}]"
 
-    # 2. Создаем уникальный временный файл. 
-    # mkstemp гарантирует, что имена файлов не совпадут, даже если 100 человек качают одновременно!
+    # 2. Создаем уникальный временный путь (без создания файла!)
+    # mkstemp гарантирует уникальность, но создает пустой файл из коробки.
+    # Нам нужно только имя — пустой файл удаляем, чтобы yt-dlp не подумал,
+    # что видео уже скачано (он проверяет наличие файла и пропускает загрузку).
     tmp_fd, tmp_path = tempfile.mkstemp(suffix=".mp4")
-    os.close(tmp_fd)  # Закрываем системный замок, чтобы yt-dlp мог писать в этот файл
+    os.close(tmp_fd)     # Закрываем дескриптор
+    os.unlink(tmp_path)  # Удаляем пустой файл — yt-dlp создаст его сам
 
     # 3. Настройки yt-dlp
+    # Указываем путь к ffmpeg (лежит в папке bin рядом с проектом)
+    ffmpeg_dir = Path(__file__).resolve().parent.parent / "bin"
+    ffmpeg_path = ffmpeg_dir / "ffmpeg.exe"
+    
     ydl_opts = {
         'format': format_string,
         'outtmpl': tmp_path,             # Сохраняем прямо в наш временный файл
         'merge_output_format': 'mp4',    # Жестко просим сделать mp4
+        'ffmpeg_location': str(ffmpeg_path),  # Указываем путь к ffmpeg
+        # Конвертируем opus звук в aac, чтобы любой плеер воспроизвёл
+        'postprocessor_args': {
+            'ffmpeg': ['-c:v', 'copy', '-c:a', 'aac'],
+        },
         'quiet': True,
         'no_warnings': True,
         'extractor_args': {
@@ -188,14 +204,10 @@ async def download_video(
     # BackgroundTasks сработает ТОЛЬКО после того, как FileResponse полностью отдаст файл
     background_tasks.add_task(cleanup, tmp_path)
 
-    # 7. Достаем название видео из полученной информации (больше не делаем второй запрос!)
-    raw_title = info.get('title', 'video')
-    # Убираем все запрещённые символы, чтобы файловая система не ругалась
-    safe_title = re.sub(r'[^a-zA-Zа-яА-ЯёЁ0-9 ._\-()]', '_', raw_title)
+    # 7. Получаем название видео для имени файла (извлечено в fetch_video)
+    safe_title = re.sub(r'[^\w ._\-()]', '', info.get('title', 'video'))
 
-    # 8. Отдаем готовый файл юзеру!
-    return FileResponse(
-        path=tmp_path,
-        media_type="video/mp4",
-        filename=f"{safe_title}.mp4",
-    )
+    # 8. Отдаем готовый файл юзеру с правильным именем!
+    # Content-Disposition: attachment; filename="video.mp4"
+    # Браузер сам покажет прогресс-бар загрузки
+    return FileResponse(path=tmp_path, filename=f"{safe_title}.mp4")

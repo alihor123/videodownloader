@@ -8,3 +8,15 @@ createRoot(document.getElementById('root')).render(
     <RootRouter />
   </StrictMode>,
 )
+
+function applyTheme() {
+  if (window.matchMedia?.("(prefers-color-scheme: dark)").matches) {
+    document.documentElement.dataset.theme = "dark"
+  } 
+  
+  else {
+    delete document.documentElement.dataset.theme
+  }
+}
+
+applyTheme()

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import styles from './MainPage.module.css'
 import Header from './Header/Header'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading.js'
-import { getVideoInfo, downloadVideo } from '../../services/yt.api.js'
+import { getVideoInfo, getDownloadUrl } from '../../services/yt.api.js'
 import { ApiError } from '../../services/api.js'
 import Loading from "../../components/Loading/Loading.jsx"
 
@@ -64,35 +64,22 @@ export default function MainPage() {
     }
   }
 
-  // Скачивает видео в выбранном качестве и сохраняет на устройство.
-  async function downloadCurrentVideo() {
+  // Скачивает видео в выбранном качестве.
+  // Браузер сам показывает прогресс-бар загрузки.
+  function downloadCurrentVideo() {
     const url = searchQuery.trim()
     if (!url || selectedHeight == null) return
 
-    onLoadingChange(true)
+    const downloadUrl = getDownloadUrl(url, selectedHeight)
 
-    try {
-      const { blob, filename } = await downloadVideo(url, selectedHeight)
-
-      // Создаём временную ссылку и кликаем — браузер сам скачает файл
-      const downloadUrl = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = downloadUrl
-      a.download = filename
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(downloadUrl)
-    } catch (error) {
-      if (error instanceof ApiError) {
-        alert(error.message)
-        return
-      }
-
-      throw error
-    } finally {
-      onLoadingChange(false)
-    }
+    // Создаём скрытую ссылку и кликаем — браузер сам скачает файл
+    // и покажет прогресс в своём менеджере загрузок
+    const a = document.createElement('a')
+    a.href = downloadUrl
+    a.download = videoData.filename || 'video.mp4'
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
   }
 
   return (
@@ -114,7 +101,7 @@ export default function MainPage() {
           </button>
         </div>
 
-        {videoData && (
+        {videoData && !isLoading && (
           <div className={styles.content}>
             <div className={styles.videoInfo}>
               <div className={styles.videoTitle}>{videoData.title}</div>

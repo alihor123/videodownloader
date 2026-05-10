@@ -8,7 +8,7 @@
 }
 
 .content {
-    margin: 8px 20px 10px 20px;
+    margin: 8px 20px 0px 20px;
     display: flex;
     flex-direction: column;
     width: 100%;
@@ -44,6 +44,7 @@
     border-radius: 18px;
     color: var(--text-main);
     font-family: var(--font-base);
+    background: var(--surface);
     font-size: 14px;
     padding: 0px 16px;
     outline: none;
@@ -209,6 +210,7 @@
 
 @media (min-width: 1200px) {
     .container {
+        justify-content: center;
         padding-top: 35px;
         width: 1200px;
         margin: 0 auto;
