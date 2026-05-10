@@ -1,10 +1,10 @@
-from fastapi import APIRouter, Query, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Query, HTTPException, BackgroundTasks
+from fastapi.responses import FileResponse
 import yt_dlp
-import subprocess
+import os
+import tempfile
 import asyncio
 import re
-import os
 
 
 # Роутер для эндпоинтов, связанных с YouTube
@@ -129,68 +129,66 @@ async def get_video_info(url: str = Query(..., description="Ссылка на в
 
 @youtube_router.get("/download")
 async def download_video(
+    background_tasks: BackgroundTasks,
     url: str = Query(..., description="Ссылка на YouTube видео"),
-    height: str = Query(..., description="Высота из списка /info (360, 720, 1080 и т.д.)"),
+    height: str = Query(..., description="Высота из списка /info (360, 720, 1080)"),
 ):
     """
-    Скачать видео в выбранном качестве без сохранения на диск.
-    yt-dlp выводит данные в stdout, FastAPI читает поток и отправляет на фронт.
+    Скачивает видео на сервер, аккуратно склеивает в идеальный .mp4
+    и отдаёт пользователю. После этого сервер сам убирает за собой мусор!
     """
 
-    COOKIES_PATH = "cookies.txt"
-
-    # Формируем форматную строку для yt-dlp:
-    #   bestvideo[height<=<height>]+bestaudio/best[height<=<height>]
-    # Это означает: лучший видео-формат с высотой <= запрошенной
-    #                + лучшая аудиодорожка
-    #                или лучшее комбинированное видео (если не найдет раздельные)
+    # 1. Готовим строку формата (лучшее видео <= height + лучший звук)
     format_string = f"bestvideo[height<={height}]+bestaudio/best[height<={height}]"
 
-    # Формируем команду:
-    cmd = [
-        "yt-dlp",
-        "-f", format_string,
-        "-o", "-",
-        "--no-part",
-        "--merge-output-format", "mp4",
-    ]
+    # 2. Создаем уникальный временный файл. 
+    # mkstemp гарантирует, что имена файлов не совпадут, даже если 100 человек качают одновременно!
+    tmp_fd, tmp_path = tempfile.mkstemp(suffix=".mp4")
+    os.close(tmp_fd)  # Закрываем системный замок, чтобы yt-dlp мог писать в этот файл
 
-    if os.path.exists(COOKIES_PATH):
-        cmd.extend(["--cookies", COOKIES_PATH])
-
-    cmd.append(url)
-
-    try:
-        process = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-    except FileNotFoundError:
-        raise HTTPException(status_code=500, detail="yt-dlp не найден. Установите: pip install yt-dlp")
-
-    ext = "mp4"
-    media_type = "video/mp4"
-
-    # async-генератор: читает stdout процесса по кускам и отдаёт наружу
-    async def generate():
-        while True:
-            chunk = await process.stdout.read(65536)
-            if not chunk:
-                break
-            yield chunk
-
-        await process.wait()
-
-        if process.returncode != 0:
-            stderr_data = await process.stderr.read()
-            error_text = stderr_data.decode("utf-8", errors="ignore")
-            print(f"yt-dlp error: {error_text}")
-
-    return StreamingResponse(
-        generate(),
-        media_type=media_type,
-        headers={
-            "Content-Disposition": f'attachment; filename="video.{ext}"',
+    # 3. Настройки yt-dlp
+    ydl_opts = {
+        'format': format_string,
+        'outtmpl': tmp_path,             # Сохраняем прямо в наш временный файл
+        'merge_output_format': 'mp4',    # Жестко просим сделать mp4
+        'quiet': True,
+        'no_warnings': True,
+        'extractor_args': {
+            'youtube': ['player_client=android,ios,web'] # Наша "шапка-невидимка"
         },
+    }
+
+    # 4. Функция для скачивания, которая за один раз скачает и отдаст информацию
+    def fetch_video():
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            # download=True скачает файл по пути tmp_path и заодно вернёт всю инфу
+            return ydl.extract_info(url, download=True)
+
+    # 5. Запускаем скачивание в соседнем потоке (чтобы сервер не "зависал" для других)
+    try:
+        info = await asyncio.to_thread(fetch_video)
+    except Exception as e:
+        # Если Ютуб выдал ошибку или видео удалено, удаляем пустой файл и жалуемся
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+        raise HTTPException(status_code=400, detail=f"Ой! Ошибка загрузки видео: {str(e)}")
+
+    # 6. Планируем уборку (Удаление файла после того, как юзер его скачает)
+    def cleanup(path: str):
+        if os.path.exists(path):
+            os.unlink(path)
+
+    # BackgroundTasks сработает ТОЛЬКО после того, как FileResponse полностью отдаст файл
+    background_tasks.add_task(cleanup, tmp_path)
+
+    # 7. Достаем название видео из полученной информации (больше не делаем второй запрос!)
+    raw_title = info.get('title', 'video')
+    # Убираем все запрещённые символы, чтобы файловая система не ругалась
+    safe_title = re.sub(r'[^a-zA-Zа-яА-ЯёЁ0-9 ._\-()]', '_', raw_title)
+
+    # 8. Отдаем готовый файл юзеру!
+    return FileResponse(
+        path=tmp_path,
+        media_type="video/mp4",
+        filename=f"{safe_title}.mp4",
     )
