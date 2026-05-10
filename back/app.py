@@ -12,4 +12,6 @@ app.include_router(api_router) #Подключение к главному ро�
 
 
 if __name__ == "__main__":
-    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
+    # reload=True отключён: он убивает in-progress скачивания при любом изменении файла.
+    # Для разработки можно включить обратно (reload=True), но скачивание будет снова ломаться.
+    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=False)

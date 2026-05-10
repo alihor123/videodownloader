@@ -11,8 +11,18 @@ export async function getVideoInfo(url) {
 }
 
 // Возвращает прямую ссылку на скачивание видео.
-// Браузер сам покажет прогресс-бар при переходе по этой ссылке.
 export function getDownloadUrl(url, height) {
   const params = new URLSearchParams({ url, height })
   return `/api/youtube/download?${params}`
+}
+
+// Открывает ссылку на скачивание в браузере.
+// Браузер сам качает файл и показывает прогресс в менеджере загрузок.
+export function triggerDownload(url, filename) {
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
 }

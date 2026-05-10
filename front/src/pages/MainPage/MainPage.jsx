@@ -2,7 +2,7 @@ import { useState } from 'react'
 import styles from './MainPage.module.css'
 import Header from './Header/Header'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading.js'
-import { getVideoInfo, getDownloadUrl } from '../../services/yt.api.js'
+import { getVideoInfo, getDownloadUrl, triggerDownload } from '../../services/yt.api.js'
 import { ApiError } from '../../services/api.js'
 import Loading from "../../components/Loading/Loading.jsx"
 
@@ -11,6 +11,7 @@ export default function MainPage() {
   const [selectedHeight, setSelectedHeight] = useState(null)
   const [videoData, setVideoData] = useState(null)
   const [isLoading, onLoadingChange] = useDelayedLoading(500, false)
+  const [isDownloading, setIsDownloading] = useState(false)
 
   // Собирает список кнопок качества из данных API.
   function buildQualityItems() {
@@ -64,22 +65,32 @@ export default function MainPage() {
     }
   }
 
-  // Скачивает видео в выбранном качестве.
-  // Браузер сам показывает прогресс-бар загрузки.
-  function downloadCurrentVideo() {
+  // Скачивает видео в выбранном качестве по подобию fetchVideo.
+  // Открывает ссылку в браузере — он сам скачает файл и покажет прогресс.
+  async function downloadCurrentVideo() {
     const url = searchQuery.trim()
     if (!url || selectedHeight == null) return
 
-    const downloadUrl = getDownloadUrl(url, selectedHeight)
+    setIsDownloading(true)
 
-    // Создаём скрытую ссылку и кликаем — браузер сам скачает файл
-    // и покажет прогресс в своём менеджере загрузок
-    const a = document.createElement('a')
-    a.href = downloadUrl
-    a.download = videoData.filename || 'video.mp4'
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
+    // Откладываем setIsDownloading(false) на 2 секунды, чтобы браузер успел
+    // начать скачивание и React успел показать "Скачивание..." на кнопке.
+    // triggerDownload() синхронный, поэтому finally сработал бы мгновенно.
+    setTimeout(() => setIsDownloading(false), 2000)
+
+    try {
+      const downloadUrl = getDownloadUrl(url, selectedHeight)
+      triggerDownload(downloadUrl, videoData?.filename || 'video.mp4')
+    } catch (error) {
+      setIsDownloading(false)
+
+      if (error instanceof ApiError) {
+        alert(error.message)
+        return
+      }
+
+      throw error
+    }
   }
 
   return (
@@ -118,7 +129,13 @@ export default function MainPage() {
               {buildQualityItems()}
             </div>
 
-            <button className={styles.download} onClick={downloadCurrentVideo}>Скачать</button>
+            <button
+              className={styles.download}
+              onClick={downloadCurrentVideo}
+              disabled={isDownloading}
+            >
+              {isDownloading ? 'Скачивание...' : 'Скачать'}
+            </button>
           </div>
         )}
 

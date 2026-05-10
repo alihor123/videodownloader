@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Query, HTTPException, BackgroundTasks
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 import yt_dlp
 import os
 import tempfile
 import asyncio
 import re
+import urllib.parse
 from pathlib import Path
 
 
@@ -160,7 +161,12 @@ async def download_video(
     os.close(tmp_fd)     # Закрываем дескриптор
     os.unlink(tmp_path)  # Удаляем пустой файл — yt-dlp создаст его сам
 
-    # 3. Настройки yt-dlp
+    # 3. Функция логирования завершения скачивания в консоль сервера
+    # Сам прогресс-бар рисует yt-dlp (quiet=False включает родной компактный индикатор)
+    def progress_hook(d):
+        if d['status'] == 'finished':
+            print(f"  Скачивание завершено, запуск ffmpeg...", flush=True)
+
     # Указываем путь к ffmpeg (лежит в папке bin рядом с проектом)
     ffmpeg_dir = Path(__file__).resolve().parent.parent / "bin"
     ffmpeg_path = ffmpeg_dir / "ffmpeg.exe"
@@ -174,7 +180,8 @@ async def download_video(
         'postprocessor_args': {
             'ffmpeg': ['-c:v', 'copy', '-c:a', 'aac'],
         },
-        'quiet': True,
+        'progress_hooks': [progress_hook],  # Вывод прогресса в консоль сервера
+        'quiet': False,  # False = показывать родной аккуратный прогресс-бар yt-dlp
         'no_warnings': True,
         'extractor_args': {
             'youtube': ['player_client=android,ios,web'] # Наша "шапка-невидимка"
@@ -183,6 +190,7 @@ async def download_video(
 
     # 4. Функция для скачивания, которая за один раз скачает и отдаст информацию
     def fetch_video():
+        print(f"Скачивание видео... (качество: {height}p)", flush=True)
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             # download=True скачает файл по пути tmp_path и заодно вернёт всю инфу
             return ydl.extract_info(url, download=True)
@@ -207,7 +215,31 @@ async def download_video(
     # 7. Получаем название видео для имени файла (извлечено в fetch_video)
     safe_title = re.sub(r'[^\w ._\-()]', '', info.get('title', 'video'))
 
-    # 8. Отдаем готовый файл юзеру с правильным именем!
-    # Content-Disposition: attachment; filename="video.mp4"
-    # Браузер сам покажет прогресс-бар загрузки
-    return FileResponse(path=tmp_path, filename=f"{safe_title}.mp4")
+    # 8. Проверяем что файл реально скачался
+    if os.path.exists(tmp_path):
+        file_size = os.path.getsize(tmp_path)
+        print(f"  Файл готов: {file_size} байт", flush=True)
+    else:
+        print(f"  ОШИБКА: файл {tmp_path} не найден!", flush=True)
+        raise HTTPException(status_code=500, detail="Файл не найден после скачивания")
+
+    # 9. Читаем файл в память и возвращаем как StreamingResponse
+    # FileResponse глючит с content-length: 0 на Windows в этой версии
+    # Браузер сам покажет прогресс-бар загрузки.
+    def file_iterator():
+        with open(tmp_path, "rb") as f:
+            yield from f
+
+    # Content-Disposition: в filename — только ASCII (latin-1-safe),
+    # в filename*= — UTF-8 для кириллицы и других символов (RFC 5987)
+    safe_ascii = re.sub(r'[^\x00-\x7F]', '_', safe_title) or 'video'
+    filename_utf8 = urllib.parse.quote(f"{safe_title}.mp4", safe='.')
+    content_disposition = (
+        f'attachment; filename="{safe_ascii}.mp4"; '
+        f'filename*=utf-8\'\'{filename_utf8}'
+    )
+    return StreamingResponse(
+        file_iterator(),
+        media_type="video/mp4",
+        headers={"Content-Disposition": content_disposition},
+    )
