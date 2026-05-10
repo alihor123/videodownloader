@@ -1,0 +1,12 @@
+# Большие бинарные файлы (ffmpeg, ffprobe)
+back/bin/
+back/ffmpeg.zip
+
+# Логи
+*.log
+back/backend.log
+
+# Кэш Python
+__pycache__/
+*.pyc
+*.pyo
