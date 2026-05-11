@@ -11,7 +11,7 @@ import {
 import { ApiError } from '../../services/api.js'
 import Loading from "../../components/Loading/Loading.jsx"
 
-const DOWNLOAD_TASK_POLL_INTERVAL_MS = 2000
+const DOWNLOAD_TASK_POLL_INTERVAL_MS = 1000
 
 function wait(ms) {
   return new Promise((resolve) => window.setTimeout(resolve, ms))

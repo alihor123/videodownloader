@@ -102,15 +102,23 @@ def update_download_task(task_id, **values):
         return task
 
 
-def get_download_progress(data):
-    """Достает процент загрузки из progress-события yt-dlp."""
+def get_download_progress(data, stage, file_ext):
+    """Собирает общий прогресс скачивания из progress-события yt-dlp."""
     total = data.get("total_bytes") or data.get("total_bytes_estimate")
     downloaded = data.get("downloaded_bytes")
 
-    if not total or not downloaded:
+    if not total or downloaded is None:
         return None
 
-    return min(99, round(downloaded * 100 / total))
+    progress = min(99, round(downloaded * 100 / total))
+
+    if file_ext == "mp3":
+        return progress
+
+    if stage == "downloading_audio":
+        return min(99, 50 + round(progress / 2))
+
+    return round(progress / 2)
 
 
 def get_ydl_download_stage(data):
@@ -138,10 +146,11 @@ def create_progress_hook(task_id, height):
 
     def progress_hook(data):
         if data.get("status") == "downloading":
+            stage = get_ydl_download_stage(data)
             update_download_task(
                 task_id,
-                stage=get_ydl_download_stage(data),
-                progress=get_download_progress(data),
+                stage=stage,
+                progress=get_download_progress(data, stage, file_ext),
             )
             return
 
