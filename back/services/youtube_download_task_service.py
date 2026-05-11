@@ -113,19 +113,40 @@ def get_download_progress(data):
     return min(99, round(downloaded * 100 / total))
 
 
+def get_ydl_download_stage(data):
+    """Определяет, какой поток сейчас скачивает yt-dlp: видео или аудио."""
+    filename = (data.get("tmpfilename") or data.get("filename") or "").lower()
+    if filename.endswith((".m4a", ".mp3", ".opus", ".aac", ".wav")):
+        return "downloading_audio"
+
+    info = data["info_dict"]
+    vcodec = info.get("vcodec")
+    acodec = info.get("acodec")
+
+    if vcodec and vcodec != "none":
+        return "downloading_video"
+
+    if acodec and acodec != "none":
+        return "downloading_audio"
+
+    return "downloading_video"
+
+
 def create_progress_hook(task_id, height):
     """Создает callback, через который yt-dlp обновляет stage/progress задачи."""
+    file_ext = get_output_ext(height)
+
     def progress_hook(data):
         if data.get("status") == "downloading":
             update_download_task(
                 task_id,
-                stage="downloading",
+                stage=get_ydl_download_stage(data),
                 progress=get_download_progress(data),
             )
             return
 
         if data.get("status") == "finished":
-            if get_output_ext(height) == "mp3":
+            if file_ext == "mp3":
                 stage = "decoding_audio"
             else:
                 stage = "merging"
@@ -203,6 +224,8 @@ async def prepare_fast_download(task_id):
     if not task:
         return False
 
+    file_ext = get_output_ext(task.height)
+
     update_download_task(
         task_id,
         stage="resolving_fast_url",
@@ -222,7 +245,6 @@ async def prepare_fast_download(task_id):
         )
         return False
 
-    file_ext = get_output_ext(task.height)
     update_download_task(
         task_id,
         status="ready",
@@ -250,7 +272,7 @@ async def prepare_file_download(task_id):
     try:
         update_download_task(
             task_id,
-            stage="downloading",
+            stage="downloading_file",
             mode="file",
         )
 

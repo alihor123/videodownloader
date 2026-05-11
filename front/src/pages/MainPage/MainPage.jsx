@@ -2,14 +2,26 @@ import { useState } from 'react'
 import styles from './MainPage.module.css'
 import Header from './Header/Header'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading.js'
-import { downloadVideo, getVideoInfo } from '../../services/yt.api.js'
+import {
+  createDownloadTask,
+  getDownloadTask,
+  getVideoInfo,
+  triggerDownload,
+} from '../../services/yt.api.js'
 import { ApiError } from '../../services/api.js'
 import Loading from "../../components/Loading/Loading.jsx"
+
+const DOWNLOAD_TASK_POLL_INTERVAL_MS = 2000
+
+function wait(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms))
+}
 
 export default function MainPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedFormat, setSelectedFormat] = useState(null)
   const [videoData, setVideoData] = useState(null)
+  const [downloadTask, setDownloadTask] = useState(null)
   const [isLoading, onLoadingChange] = useDelayedLoading(500, false)
   const [isDownloading, setIsDownloading] = useState(false)
 
@@ -45,6 +57,7 @@ export default function MainPage() {
 
     onLoadingChange(true)
     setVideoData(null)
+    setDownloadTask(null)
 
     try {
       const data = await getVideoInfo(url)
@@ -66,15 +79,32 @@ export default function MainPage() {
     }
   }
 
-  // Открывает ссылку в браузере — он сам скачает файл и покажет прогресс.
+  // Создает задачу и обновляет downloadTask на каждом polling-шаге для будущего UI.
   async function downloadCurrentVideo() {
     const url = searchQuery.trim()
     if (!url || !selectedFormat) return
 
     setIsDownloading(true)
+    setDownloadTask(null)
 
     try {
-      await downloadVideo(url, selectedFormat)
+      let task = await createDownloadTask(url, selectedFormat)
+      setDownloadTask(task)
+
+      while (task.status !== "ready" && task.status !== "failed") {
+        await wait(DOWNLOAD_TASK_POLL_INTERVAL_MS)
+        task = await getDownloadTask(task.task_id)
+        setDownloadTask(task)
+      }
+
+      if (task.status === "failed") {
+        throw new ApiError(
+          task.error || task.message || "Не удалось подготовить скачивание",
+          400
+        )
+      }
+
+      triggerDownload(task.download_url)
     } catch (error) {
       if (error instanceof ApiError) {
         alert(error.message)
@@ -106,7 +136,7 @@ export default function MainPage() {
           </button>
         </div>
 
-        {videoData && !isLoading && (
+        {videoData && !isLoading && !isDownloading && (
           <div className={styles.content}>
             <div className={styles.videoInfo}>
               <div className={styles.videoTitle}>{videoData.title}</div>
@@ -133,9 +163,11 @@ export default function MainPage() {
           </div>
         )}
 
-        {isLoading && (
+        {(isLoading || isDownloading) && (
           <div className={styles.content}>
-            <Loading />
+            {isLoading && <Loading />}
+            {isDownloading && downloadTask && `${downloadTask.message}`}
+            {downloadTask && downloadTask.progress && `: ${downloadTask.progress}`}
           </div>
         )}
       </div>

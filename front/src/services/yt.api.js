@@ -1,6 +1,4 @@
-import { Api, ApiError } from "./api"
-
-const DOWNLOAD_TASK_POLL_INTERVAL_MS = 2000
+import { Api } from "./api"
 
 // Получает информацию о YouTube-видео: название, автор, длительность, список качеств.
 export async function getVideoInfo(url) {
@@ -22,10 +20,6 @@ export function triggerDownload(downloadUrl) {
   document.body.removeChild(a)
 }
 
-function wait(ms) {
-  return new Promise((resolve) => window.setTimeout(resolve, ms))
-}
-
 // Создает задачу скачивания: ошибки и статусы теперь живут в task API.
 export async function createDownloadTask(url, format) {
   const response = await Api.fetchPost("/youtube/download-tasks", {
@@ -44,24 +38,4 @@ export async function getDownloadTask(taskId) {
   const response = await Api.fetchGet(`/youtube/download-tasks/${taskId}`)
 
   return response.json()
-}
-
-// Ждет готовности задачи и запускает нативное скачивание готового результата.
-export async function downloadVideo(url, format) {
-  let task = await createDownloadTask(url, format)
-
-  while (task.status !== "ready" && task.status !== "failed") {
-    await wait(DOWNLOAD_TASK_POLL_INTERVAL_MS)
-    task = await getDownloadTask(task.task_id ?? task.id)
-    console.log(task.message)
-  }
-
-  if (task.status === "failed") {
-    throw new ApiError(
-      task.error || task.message || "Не удалось подготовить скачивание",
-      400
-    )
-  }
-
-  triggerDownload(task.download_url)
 }
