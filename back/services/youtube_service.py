@@ -251,6 +251,7 @@ def build_format_list(info):
             {
                 "height": height,
                 "label": f"{height}p",
+                "ext": "mp4",
                 "size": size,
                 "fast": fast
             }
@@ -265,6 +266,7 @@ def build_format_list(info):
         formats.append({
             "height": bitrate,
             "label": quality,
+            "ext": "mp3",
             "size": format_filesize(get_filesize(audio_format)),
             "fast": False
         })

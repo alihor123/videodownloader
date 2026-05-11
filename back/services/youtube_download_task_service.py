@@ -17,6 +17,7 @@ from services.youtube_service import (
     get_safe_title,
     remove_if_exists,
 )
+from services.youtube_download_stages import get_stage_message
 
 
 TASKS = {}
@@ -36,7 +37,7 @@ class DownloadTask(BaseModel):
     user_agent: str | None
     status: str = "queued"
     stage: str = "queued"
-    message: str = "Задача создана"
+    message: str = get_stage_message("queued")
     progress: int | None = None
     error: str | None = None
     mode: str | None = None
@@ -76,6 +77,12 @@ def get_download_task(task_id):
         return TASKS.get(task_id)
 
 
+def delete_download_task(task_id):
+    """Закрывает задачу: удаляет ее из памяти, когда результат уже отдан браузеру."""
+    with TASKS_LOCK:
+        TASKS.pop(task_id, None)
+
+
 def update_download_task(task_id, **values):
     """Безопасно обновляет задачу и держит lock на чтение и запись сразу."""
     with TASKS_LOCK:
@@ -84,6 +91,9 @@ def update_download_task(task_id, **values):
         task = TASKS.get(task_id)
         if not task:
             return None
+
+        if "stage" in values and "message" not in values:
+            values["message"] = get_stage_message(values["stage"])
 
         for key, value in values.items():
             setattr(task, key, value)
@@ -110,20 +120,17 @@ def create_progress_hook(task_id, height):
             update_download_task(
                 task_id,
                 stage="downloading",
-                message="Скачиваем файл",
                 progress=get_download_progress(data),
             )
             return
 
         if data.get("status") == "finished":
             if get_output_ext(height) == "mp3":
-                message = "Конвертируем аудио"
                 stage = "decoding_audio"
             else:
-                message = "Склеиваем видео и аудио"
                 stage = "merging"
 
-            update_download_task(task_id, stage=stage, message=message, progress=None)
+            update_download_task(task_id, stage=stage, progress=None)
 
     return progress_hook
 
@@ -199,7 +206,6 @@ async def prepare_fast_download(task_id):
     update_download_task(
         task_id,
         stage="resolving_fast_url",
-        message="Пробуем подготовить быструю загрузку",
     )
 
     try:
@@ -213,7 +219,6 @@ async def prepare_fast_download(task_id):
         update_download_task(
             task_id,
             stage="fallback_to_file",
-            message="Быстрая загрузка недоступна, готовим файл на сервере",
         )
         return False
 
@@ -222,7 +227,6 @@ async def prepare_fast_download(task_id):
         task_id,
         status="ready",
         stage="ready",
-        message="Файл готов к скачиванию",
         mode="fast",
         direct_url=direct_url,
         safe_title=get_safe_title(info),
@@ -247,7 +251,6 @@ async def prepare_file_download(task_id):
         update_download_task(
             task_id,
             stage="downloading",
-            message="Скачиваем файл",
             mode="file",
         )
 
@@ -265,7 +268,6 @@ async def prepare_file_download(task_id):
             task_id,
             status="ready",
             stage="ready",
-            message="Файл готов к скачиванию",
             file_path=tmp_path,
             safe_title=get_safe_title(info),
             progress=100,
@@ -288,7 +290,6 @@ async def run_download_task(task_id):
         task_id,
         status="running",
         stage="preparing",
-        message="Подготавливаем скачивание",
     )
 
     try:
@@ -307,6 +308,5 @@ async def run_download_task(task_id):
             task_id,
             status="failed",
             stage="failed",
-            message="Не удалось подготовить скачивание",
             error=str(error),
         )
