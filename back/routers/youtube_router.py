@@ -1,8 +1,9 @@
 import asyncio
 import os
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import FileResponse
+from starlette.background import BackgroundTask
 
 from services.youtube_service import (
     build_content_disposition,
@@ -16,7 +17,6 @@ from services.youtube_service import (
     get_media_type,
     get_output_ext,
     get_safe_title,
-    iter_file,
     remove_if_exists,
 )
 
@@ -64,7 +64,6 @@ async def get_video_info(
 
 @youtube_router.get("/download")
 async def download_video(
-    background_tasks: BackgroundTasks,
     url: str = Query(..., description="Ссылка на YouTube видео"),
     height: str = Query(..., description="Качество из списка /info"),
 ):
@@ -100,10 +99,7 @@ async def download_video(
             detail=f"Ой! Ошибка загрузки видео: {str(error)}",
         )
 
-    # 5. Удаляем временный файл после того, как ответ полностью отправится
-    background_tasks.add_task(remove_if_exists, tmp_path)
-
-    # 6. Проверяем, что итоговый файл действительно появился
+    # 5. Проверяем, что итоговый файл действительно появился
     if not os.path.exists(tmp_path):
         print(f"  ОШИБКА: файл {tmp_path} не найден!", flush=True)
         raise HTTPException(
@@ -114,10 +110,12 @@ async def download_video(
     file_size = os.path.getsize(tmp_path)
     print(f"  Файл готов: {file_size} байт", flush=True)
 
-    # 7. Отдаём файл потоком, не загружая его целиком в память
+    # 6. Отдаём готовый файл стандартным ответом Starlette.
+    # FileResponse выставит Content-Length, а background удалит временный файл после ответа.
     safe_title = get_safe_title(info)
-    return StreamingResponse(
-        iter_file(tmp_path),
+    return FileResponse(
+        tmp_path,
         media_type=get_media_type(height),
         headers={"Content-Disposition": build_content_disposition(safe_title, output_ext)},
+        background=BackgroundTask(remove_if_exists, tmp_path),
     )

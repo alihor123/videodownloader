@@ -1,6 +1,7 @@
 import os
 import re
 import tempfile
+import time
 import urllib.parse
 from pathlib import Path
 
@@ -11,6 +12,7 @@ import yt_dlp
 YOUTUBE_EXTRACTOR_ARGS = {"youtube": ["player_client=android,ios,web"]}
 STANDARD_HEIGHTS = (144, 240, 360, 480, 720, 1080, 1440, 2160)
 MAX_AUDIO_BITRATE = 512
+TEMP_FILE_MAX_AGE_SEC = 90 * 60
 
 
 # Локальные пути проекта
@@ -208,14 +210,17 @@ def build_format_list(info):
     formats = []
     for height in sorted(formats_video_by_height):
         size = format_filesize(get_filesize(formats_video_by_height[height]))
+        fast = True
         if not has_audio_stream(formats_video_by_height[height]):
             size = format_filesize(get_filesize(formats_video_by_height[height]) + max_audio_size)
+            fast = False
         formats.append(
             {
                 "height": height,
                 "label": f"{height}p",
                 "size": size,
                 "ext": "mp4",
+                "fast": fast
             }
             
         )
@@ -230,6 +235,7 @@ def build_format_list(info):
             "label": quality,
             "size": format_filesize(get_filesize(audio_format)),
             "ext": "mp3",
+            "fast": False
         })
 
     return formats
@@ -280,9 +286,28 @@ def extract_info(url, ydl_opts, download=False):
 
 
 # Временные файлы и HTTP-ответ
+def cleanup_old_temp_files(max_age_sec=TEMP_FILE_MAX_AGE_SEC):
+    """Удаляет временные файлы, которые явно остались от старых скачиваний."""
+    if not TEMP_DIR.exists():
+        return
+
+    now = time.time()
+
+    for path in TEMP_DIR.iterdir():
+        if not path.is_file():
+            continue
+
+        try:
+            if now - path.stat().st_mtime > max_age_sec:
+                os.unlink(path)
+        except OSError:
+            pass
+
+
 def create_temp_file_path(ext):
     """Создаёт уникальный временный путь с расширением."""
     TEMP_DIR.mkdir(parents=True, exist_ok=True)
+    cleanup_old_temp_files()
 
     tmp_fd, tmp_path = tempfile.mkstemp(suffix=f".{ext}", dir=TEMP_DIR)
     os.close(tmp_fd)
@@ -293,6 +318,7 @@ def create_temp_file_path(ext):
 def create_temp_base_path():
     """Создаёт уникальный временный путь без расширения."""
     TEMP_DIR.mkdir(parents=True, exist_ok=True)
+    cleanup_old_temp_files()
 
     tmp_fd, tmp_path = tempfile.mkstemp(dir=TEMP_DIR)
     os.close(tmp_fd)
@@ -324,9 +350,3 @@ def build_content_disposition(safe_title, ext):
         f'attachment; filename="{safe_ascii}.{ext}"; '
         f"filename*=utf-8''{filename_utf8}"
     )
-
-
-def iter_file(path):
-    """Потоково читает файл для StreamingResponse."""
-    with open(path, "rb") as file:
-        yield from file

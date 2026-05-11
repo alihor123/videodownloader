@@ -18,22 +18,23 @@ export default function MainPage() {
     if (!videoData?.formats?.length) return null
 
       const items = videoData.formats.map((fmt) => {
-      const isSelected = selectedHeight === fmt.height
+        const isSelected = selectedHeight === fmt.height
 
-      return (
-        <button
-          className={`${styles.qualityItem} ${isSelected ? styles.selected : ''}`}
-          key={fmt.height}
-          onClick={() => setSelectedHeight(fmt.height)}
-        >
-          <div className={styles.itemDescription}>
-            <div className={styles.res}>{fmt.label}</div>
-            <div className={styles.qualitySize}>{fmt.size}</div>
-            <div className={styles.format}>{fmt.ext}</div>
-          </div>
-        </button>
-      )
-    })
+        return (
+          <button
+            className={`${styles.qualityItem} ${isSelected ? styles.selected : ''}`}
+            key={fmt.height}
+            onClick={() => setSelectedHeight(fmt.height)}
+          >
+            <div className={styles.itemDescription}>
+              <div className={styles.res}>{fmt.label}</div>
+              <div className={styles.qualitySize}>{fmt.size}</div>
+              <div className={styles.format}>{fmt.ext}</div>
+              {fmt.fast && <div className={styles.format}>fast</div>}
+            </div>
+          </button>
+        )
+      })
     return items
   }
 
@@ -65,23 +66,17 @@ export default function MainPage() {
     }
   }
 
-  // Скачивает видео в выбранном качестве по подобию fetchVideo.
   // Открывает ссылку в браузере — он сам скачает файл и покажет прогресс.
   async function downloadCurrentVideo() {
     const url = searchQuery.trim()
     if (!url || selectedHeight == null) return
 
-    setIsDownloading(true)
-
-    // Откладываем setIsDownloading(false) на 2 секунды, чтобы браузер успел
-    // начать скачивание и React успел показать "Скачивание..." на кнопке.
-    // triggerDownload() синхронный, поэтому finally сработал бы мгновенно.
-    setTimeout(() => setIsDownloading(false), 2000)
+    
 
     try {
       triggerDownload(url, selectedHeight)
     } catch (error) {
-      setIsDownloading(false)
+   
 
       if (error instanceof ApiError) {
         alert(error.message)
