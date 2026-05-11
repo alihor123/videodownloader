@@ -1,8 +1,9 @@
 import asyncio
 import os
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from starlette.background import BackgroundTask
 
 from database.db_tools import add_download_stat
@@ -28,6 +29,15 @@ from services.youtube_service import (
 youtube_router = APIRouter(prefix="/youtube", tags=["youtube"])
 info_rate_limiter = RateLimiter(max_requests=20, period=60)
 download_rate_limiter = RateLimiter(max_requests=5, period=60)
+
+
+async def stream_url(url):
+    """Потоково читает прямую ссылку, не сохраняя файл на сервер."""
+    async with httpx.AsyncClient(follow_redirects=True) as client:
+        async with client.stream("GET", url) as response:
+            response.raise_for_status()
+            async for chunk in response.aiter_bytes():
+                yield chunk
 
 
 @youtube_router.get("/info")
@@ -102,6 +112,49 @@ async def get_download_url(
     )
 
     return {"url": fast_format_url}
+
+
+@youtube_router.get("/download-stream")
+async def download_stream(
+    request: Request,
+    url: str = Query(..., description="Ссылка на YouTube видео"),
+    height: str = Query(..., description="Качество из списка /info"),
+    client_ip: str = Depends(download_rate_limiter),
+):
+    """
+    Отдаёт готовый mp4-формат потоком через сервер, без временного файла и ffmpeg.
+    """
+
+    # 1. Получаем прямую ссылку на быстрый формат
+    ydl_opts = get_info_ydl_opts()
+    try:
+        info = await asyncio.to_thread(extract_info, url, ydl_opts)
+    except Exception:
+        raise HTTPException(
+            status_code=400,
+            detail="Ой! Не удалось получить прямую ссылку. Попробуйте обычное скачивание.",
+        )
+
+    fast_format_url = get_fast_format_url(info, height)
+    if not fast_format_url:
+        raise HTTPException(status_code=404, detail="Быстрая ссылка не найдена")
+
+    await add_download_stat(
+        ip=client_ip,
+        user_agent=request.headers.get("user-agent"),
+        video_url=url,
+        format_value=height,
+        file_ext=get_output_ext(height),
+    )
+
+    # 2. Отдаём поток с нормальным именем файла для браузера
+    safe_title = get_safe_title(info)
+    output_ext = get_output_ext(height)
+    return StreamingResponse(
+        stream_url(fast_format_url),
+        media_type=get_media_type(height),
+        headers={"Content-Disposition": build_content_disposition(safe_title, output_ext)},
+    )
 
 
 @youtube_router.get("/download-file")
