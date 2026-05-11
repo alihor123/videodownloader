@@ -18,10 +18,9 @@ export function getDownloadUrl(url, height) {
 
 // Открывает ссылку на скачивание в браузере.
 // Браузер сам качает файл и показывает прогресс в менеджере загрузок.
-export function triggerDownload(url, filename) {
+export function triggerDownload(url) {
   const a = document.createElement('a')
   a.href = url
-  a.download = filename
   document.body.appendChild(a)
   a.click()
   document.body.removeChild(a)

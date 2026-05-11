@@ -48,6 +48,7 @@ back/ffmpeg.zip
 downloads/
 tmp/
 temp/
+back/tmp/
 *.part
 *.mp4
 *.m4a

@@ -80,7 +80,7 @@ export default function MainPage() {
 
     try {
       const downloadUrl = getDownloadUrl(url, selectedHeight)
-      triggerDownload(downloadUrl, videoData?.filename || 'video.mp4')
+      triggerDownload(downloadUrl)
     } catch (error) {
       setIsDownloading(false)
 
