@@ -29,7 +29,6 @@ export default function MainPage() {
             <div className={styles.itemDescription}>
               <div className={styles.res}>{fmt.label}</div>
               <div className={styles.qualitySize}>{fmt.size}</div>
-              <div className={styles.format}>{fmt.ext}</div>
               {fmt.fast && <div className={styles.format}>fast</div>}
             </div>
           </button>

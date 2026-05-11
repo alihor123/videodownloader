@@ -5,6 +5,7 @@ import time
 import urllib.parse
 from pathlib import Path
 
+import httpx
 import yt_dlp
 
 
@@ -251,7 +252,6 @@ def build_format_list(info):
                 "height": height,
                 "label": f"{height}p",
                 "size": size,
-                "ext": "mp4",
                 "fast": fast
             }
             
@@ -266,7 +266,6 @@ def build_format_list(info):
             "height": bitrate,
             "label": quality,
             "size": format_filesize(get_filesize(audio_format)),
-            "ext": "mp3",
             "fast": False
         })
 
@@ -283,7 +282,7 @@ def get_info_ydl_opts():
     }
 
 
-def get_download_ydl_opts(height, output_ext, download_path, progress_hook):
+def get_download_ydl_opts(height, file_ext, download_path, progress_hook):
     """Собирает настройки yt-dlp для скачивания видео или аудио."""
     ydl_opts = {
         "format": get_download_format(height),
@@ -299,7 +298,7 @@ def get_download_ydl_opts(height, output_ext, download_path, progress_hook):
         bitrate = get_audio_download_bitrate(height)
         ydl_opts["postprocessors"] = [{
             "key": "FFmpegExtractAudio",
-            "preferredcodec": output_ext,
+            "preferredcodec": file_ext,
             "preferredquality": bitrate,
         }]
         return ydl_opts
@@ -315,6 +314,15 @@ def extract_info(url, ydl_opts, download=False):
     """Запускает yt-dlp и возвращает информацию о видео."""
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         return ydl.extract_info(url, download=download)
+
+
+async def stream_url(url):
+    """Потоково читает прямую ссылку, не сохраняя файл на сервер."""
+    async with httpx.AsyncClient(follow_redirects=True) as client:
+        async with client.stream("GET", url) as response:
+            response.raise_for_status()
+            async for chunk in response.aiter_bytes():
+                yield chunk
 
 
 # Временные файлы и HTTP-ответ
@@ -336,12 +344,12 @@ def cleanup_old_temp_files(max_age_sec=TEMP_FILE_MAX_AGE_SEC):
             pass
 
 
-def create_temp_file_path(ext):
+def create_temp_file_path(file_ext):
     """Создаёт уникальный временный путь с расширением."""
     TEMP_DIR.mkdir(parents=True, exist_ok=True)
     cleanup_old_temp_files()
 
-    tmp_fd, tmp_path = tempfile.mkstemp(suffix=f".{ext}", dir=TEMP_DIR)
+    tmp_fd, tmp_path = tempfile.mkstemp(suffix=f".{file_ext}", dir=TEMP_DIR)
     os.close(tmp_fd)
     os.unlink(tmp_path)
     return tmp_path
@@ -358,27 +366,32 @@ def create_temp_base_path():
     return tmp_path
 
 
-def create_download_paths(height, output_ext):
+def create_download_paths(height, file_ext):
     """Возвращает путь для yt-dlp и путь итогового файла."""
     if is_audio_download(height):
         download_path = create_temp_base_path()
-        return download_path, f"{download_path}.{output_ext}"
+        return download_path, f"{download_path}.{file_ext}"
 
-    tmp_path = create_temp_file_path(output_ext)
+    tmp_path = create_temp_file_path(file_ext)
     return tmp_path, tmp_path
 
 
 def remove_if_exists(path):
     """Удаляет файл, если он существует."""
     if os.path.exists(path):
-        os.unlink(path)
+        try:
+            os.unlink(path)
+        except PermissionError:
+            # На Windows файл может еще быть кратко занят после отправки ответа.
+            # Cleanup лучше пропустить, чем ронять ASGI-обработчик лишним исключением.
+            return
 
 
-def build_content_disposition(safe_title, ext):
+def build_content_disposition(safe_title, file_ext):
     """Готовит Content-Disposition с ASCII fallback и UTF-8 filename*."""
     safe_ascii = re.sub(r"[^\x00-\x7F]", "_", safe_title) or "video"
-    filename_utf8 = urllib.parse.quote(f"{safe_title}.{ext}", safe=".")
+    filename_utf8 = urllib.parse.quote(f"{safe_title}.{file_ext}", safe=".")
     return (
-        f'attachment; filename="{safe_ascii}.{ext}"; '
+        f'attachment; filename="{safe_ascii}.{file_ext}"; '
         f"filename*=utf-8''{filename_utf8}"
     )

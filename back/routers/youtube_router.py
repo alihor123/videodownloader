@@ -1,27 +1,27 @@
 import asyncio
-import os
 
-import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, StreamingResponse
+from pydantic import BaseModel
 from starlette.background import BackgroundTask
 
-from database.db_tools import add_download_stat
+from services.download_task_service import (
+    create_download_task,
+    get_download_response_data,
+    get_download_task,
+    run_download_task,
+    serialize_download_task,
+)
 from services.rate_limiter import RateLimiter
 from services.youtube_service import (
     build_content_disposition,
     build_format_list,
-    create_download_paths,
     extract_info,
     format_duration,
     format_views,
-    get_download_ydl_opts,
-    get_fast_format_url,
     get_info_ydl_opts,
-    get_media_type,
-    get_output_ext,
-    get_safe_title,
     remove_if_exists,
+    stream_url,
 )
 
 
@@ -31,14 +31,14 @@ info_rate_limiter = RateLimiter(max_requests=20, period=60)
 download_rate_limiter = RateLimiter(max_requests=5, period=60)
 
 
-async def stream_url(url):
-    """Потоково читает прямую ссылку, не сохраняя файл на сервер."""
-    async with httpx.AsyncClient(follow_redirects=True) as client:
-        async with client.stream("GET", url) as response:
-            response.raise_for_status()
-            async for chunk in response.aiter_bytes():
-                yield chunk
+class DownloadFormat(BaseModel):
+    height: int | str
+    fast: bool = False
 
+
+class CreateDownloadTaskRequest(BaseModel):
+    url: str
+    format: DownloadFormat
 
 @youtube_router.get("/info")
 async def get_video_info(
@@ -49,11 +49,8 @@ async def get_video_info(
     Получаем информацию о видео:
     название, автор, превью и список готовых форматов.
     """
-
-    # 1. Настройки нашего помощника yt-dlp
     ydl_opts = get_info_ydl_opts()
 
-    # 2. Аккуратно запрашиваем данные
     try:
         info = await asyncio.to_thread(extract_info, url, ydl_opts)
     except Exception:
@@ -62,10 +59,7 @@ async def get_video_info(
             detail="Ой! Не удалось получить данные видео. Проверьте ссылку.",
         )
 
-    # 3. Перебираем форматы и упаковываем их для фронта
     formats = build_format_list(info)
-
-    # 4. Готовим метаданные для отображения
     duration_str = format_duration(info.get("duration", 0))
     views_str = format_views(info.get("view_count", 0))
 
@@ -78,149 +72,75 @@ async def get_video_info(
     }
 
 
-@youtube_router.get("/download-url")
-async def get_download_url(
+@youtube_router.post("/download-tasks")
+async def create_youtube_download_task(
+    body: CreateDownloadTaskRequest,
     request: Request,
-    url: str = Query(..., description="Ссылка на YouTube видео"),
-    height: str = Query(..., description="Качество из списка /info"),
     client_ip: str = Depends(download_rate_limiter),
 ):
     """
-    Возвращает прямую ссылку на готовый mp4-формат, если YouTube отдаёт его без склейки.
+    Создает задачу скачивания и сразу возвращает task_id.
+    Само скачивание идет в фоне, а фронт опрашивает статус отдельно.
     """
-
-    # 1. Получаем прямую ссылку на быстрый формат
-    ydl_opts = get_info_ydl_opts()
-    try:
-        info = await asyncio.to_thread(extract_info, url, ydl_opts)
-    except Exception:
-        raise HTTPException(
-            status_code=400,
-            detail="Ой! Не удалось получить прямую ссылку. Попробуйте обычное скачивание.",
-        )
-
-    fast_format_url = get_fast_format_url(info, height)
-    if not fast_format_url:
-        raise HTTPException(status_code=404, detail="Быстрая ссылка не найдена")
-
-    await add_download_stat(
+    task = create_download_task(
+        url=body.url,
+        height=body.format.height,
+        requested_fast=body.format.fast,
         ip=client_ip,
         user_agent=request.headers.get("user-agent"),
-        video_url=url,
-        format_value=height,
-        file_ext=get_output_ext(height),
     )
+    asyncio.create_task(run_download_task(task.id))
 
-    return {"url": fast_format_url}
+    return serialize_download_task(task)
 
 
-@youtube_router.get("/download-stream")
-async def download_stream(
-    request: Request,
-    url: str = Query(..., description="Ссылка на YouTube видео"),
-    height: str = Query(..., description="Качество из списка /info"),
-    client_ip: str = Depends(download_rate_limiter),
-):
+@youtube_router.get("/download-tasks/{task_id}")
+async def get_youtube_download_task(task_id: str):
+    """Возвращает текущий статус задачи для polling на фронте."""
+    task = get_download_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Задача скачивания не найдена")
+
+    return serialize_download_task(task)
+
+
+@youtube_router.get("/download-tasks/{task_id}/download")
+async def download_youtube_task_file(task_id: str):
     """
-    Отдаёт готовый mp4-формат потоком через сервер, без временного файла и ffmpeg.
+    Отдает уже готовый результат задачи:
+    fast-формат стримится через сервер, обычный формат отдается из tmp.
     """
+    task = get_download_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Задача скачивания не найдена")
 
-    # 1. Получаем прямую ссылку на быстрый формат
-    ydl_opts = get_info_ydl_opts()
-    try:
-        info = await asyncio.to_thread(extract_info, url, ydl_opts)
-    except Exception:
-        raise HTTPException(
-            status_code=400,
-            detail="Ой! Не удалось получить прямую ссылку. Попробуйте обычное скачивание.",
+    if task.status == "failed":
+        raise HTTPException(status_code=409, detail=task.message)
+
+    if task.status != "ready":
+        raise HTTPException(status_code=409, detail="Файл еще не готов")
+
+    response_data = get_download_response_data(task)
+    headers = {
+        "Content-Disposition": build_content_disposition(
+            response_data["safe_title"],
+            response_data["file_ext"],
+        )
+    }
+
+    if response_data["mode"] == "fast" and response_data["direct_url"]:
+        return StreamingResponse(
+            stream_url(response_data["direct_url"]),
+            media_type=response_data["media_type"],
+            headers=headers,
         )
 
-    fast_format_url = get_fast_format_url(info, height)
-    if not fast_format_url:
-        raise HTTPException(status_code=404, detail="Быстрая ссылка не найдена")
-
-    await add_download_stat(
-        ip=client_ip,
-        user_agent=request.headers.get("user-agent"),
-        video_url=url,
-        format_value=height,
-        file_ext=get_output_ext(height),
-    )
-
-    # 2. Отдаём поток с нормальным именем файла для браузера
-    safe_title = get_safe_title(info)
-    output_ext = get_output_ext(height)
-    return StreamingResponse(
-        stream_url(fast_format_url),
-        media_type=get_media_type(height),
-        headers={"Content-Disposition": build_content_disposition(safe_title, output_ext)},
-    )
-
-
-@youtube_router.get("/download-file")
-async def download_file(
-    request: Request,
-    url: str = Query(..., description="Ссылка на YouTube видео"),
-    height: str = Query(..., description="Качество из списка /info"),
-    client_ip: str = Depends(download_rate_limiter),
-):
-    """
-    Скачивает видео или аудио на сервер, готовит итоговый файл
-    и отдаёт пользователю. После ответа сервер убирает временный файл.
-    """
-
-    # 1. Определяем итоговый формат и временные пути
-    output_ext = get_output_ext(height)
-    download_path, tmp_path = create_download_paths(height, output_ext)
-
-    # 2. Логируем переход yt-dlp к ffmpeg/postprocessing
-    def progress_hook(data):
-        if data["status"] == "finished":
-            print("  Скачивание завершено, запуск ffmpeg...", flush=True)
-
-    # 3. Собираем настройки yt-dlp для выбранного качества
-    ydl_opts = get_download_ydl_opts(height, output_ext, download_path, progress_hook)
-
-    # 4. Скачиваем в отдельном потоке, чтобы не блокировать FastAPI event loop
-    def fetch_video():
-        print(f"Скачивание видео... (качество: {height})", flush=True)
-        return extract_info(url, ydl_opts, download=True)
-
-    try:
-        info = await asyncio.to_thread(fetch_video)
-    except Exception as error:
-        remove_if_exists(tmp_path)
-        remove_if_exists(download_path)
-        raise HTTPException(
-            status_code=400,
-            detail=f"Ой! Ошибка загрузки видео: {str(error)}",
+    if response_data["mode"] == "file" and response_data["file_path"]:
+        return FileResponse(
+            response_data["file_path"],
+            media_type=response_data["media_type"],
+            headers=headers,
+            background=BackgroundTask(remove_if_exists, response_data["file_path"]),
         )
 
-    # 5. Проверяем, что итоговый файл действительно появился
-    if not os.path.exists(tmp_path):
-        print(f"  ОШИБКА: файл {tmp_path} не найден!", flush=True)
-        raise HTTPException(
-            status_code=500,
-            detail="Файл не найден после скачивания",
-        )
-
-    file_size = os.path.getsize(tmp_path)
-    print(f"  Файл готов: {file_size} байт", flush=True)
-
-    await add_download_stat(
-        ip=client_ip,
-        user_agent=request.headers.get("user-agent"),
-        video_url=url,
-        format_value=height,
-        file_ext=output_ext,
-    )
-
-    # 6. Отдаём готовый файл стандартным ответом Starlette.
-    # FileResponse выставит Content-Length, а background удалит временный файл после ответа.
-    safe_title = get_safe_title(info)
-    return FileResponse(
-        tmp_path,
-        media_type=get_media_type(height),
-        headers={"Content-Disposition": build_content_disposition(safe_title, output_ext)},
-        background=BackgroundTask(remove_if_exists, tmp_path),
-    )
+    raise HTTPException(status_code=500, detail="Готовый файл не найден")

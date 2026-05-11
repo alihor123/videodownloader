@@ -1,4 +1,6 @@
-import { Api } from "./api"
+import { Api, ApiError } from "./api"
+
+const DOWNLOAD_TASK_POLL_INTERVAL_MS = 2000
 
 // Получает информацию о YouTube-видео: название, автор, длительность, список качеств.
 export async function getVideoInfo(url) {
@@ -10,80 +12,56 @@ export async function getVideoInfo(url) {
   return response.json()
 }
 
-// Открывает ссылку на скачивание в браузере.
+// Открывает готовую ссылку на скачивание в браузере.
 // Браузер сам качает файл и показывает прогресс в менеджере загрузок.
-export function triggerDownload(url, height, path = "/download-file") {
-  const params = new URLSearchParams({ url, height })
-  const a = document.createElement('a')
-  a.href = `/api/youtube${path}?${params}`
+export function triggerDownload(downloadUrl) {
+  const a = document.createElement("a")
+  a.href = downloadUrl
   document.body.appendChild(a)
   a.click()
   document.body.removeChild(a)
 }
 
-
-// Запускает скачивание выбранного формата через серверный поток.
-export function downloadVideo(url, format) {
-  if (format?.fast) {
-    triggerDownload(url, format.height, "/download-stream")
-    return
-  }
-
-  triggerDownload(url, format.height)
+function wait(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms))
 }
 
-
-//////////////////////////////////////////////////////////////////////////
-
-
-// Механика скачивания через прямую ссылку в новом окне.
-// Открывает пустую вкладку сразу по клику, чтобы браузер не счёл её popup.
-export function openBlankTab() {
-  const tab = window.open('about:blank', '_blank')
-  if (tab) {
-    tab.opener = null
-  }
-
-  return tab
-}
-
-// Получает прямую ссылку для быстрых форматов, которые YouTube отдаёт без склейки.
-export async function getDirectDownloadUrl(url, height) {
-  const params = new URLSearchParams({ url, height })
-  const response = await Api.fetchGet(`/youtube/download-url?${params}`, {
-    400: "Не удалось получить быструю ссылку. Попробуйте обычное скачивание",
-    404: "Быстрая ссылка не найдена",
+// Создает задачу скачивания: ошибки и статусы теперь живут в task API.
+export async function createDownloadTask(url, format) {
+  const response = await Api.fetchPost("/youtube/download-tasks", {
+    url,
+    format: {
+      height: format.height,
+      fast: format.fast,
+    },
   })
 
   return response.json()
 }
 
-// Запускает скачивание выбранного формата через прямую ссылку в новом окне.
-export async function downloadVideoInNewWindow(url, format) {
-  if (!format?.fast) {
-    triggerDownload(url, format.height)
-    return
+// Получает свежее состояние задачи.
+export async function getDownloadTask(taskId) {
+  const response = await Api.fetchGet(`/youtube/download-tasks/${taskId}`)
+
+  return response.json()
+}
+
+// Ждет готовности задачи и запускает нативное скачивание готового результата.
+export async function downloadVideo(url, format) {
+  let task = await createDownloadTask(url, format)
+
+  while (task.status !== "ready" && task.status !== "failed") {
+    await wait(DOWNLOAD_TASK_POLL_INTERVAL_MS)
+    task = await getDownloadTask(task.task_id ?? task.id)
+    console.log(task.message)
   }
 
-  const tab = openBlankTab()
-
-  try {
-    const data = await getDirectDownloadUrl(url, format.height)
-    if (tab) {
-      tab.location.href = data.url
-    } else {
-      window.open(data.url, '_blank', 'noopener,noreferrer')
-    }
-  } catch (error) {
-    if (tab) {
-      tab.close()
-    }
-
-    if (error.status === 404) {
-      triggerDownload(url, format.height)
-      return
-    }
-
-    throw error
+  if (task.status === "failed") {
+    throw new ApiError(
+      task.error || task.message || "Не удалось подготовить скачивание",
+      400
+    )
   }
+
+  triggerDownload(task.download_url)
 }
