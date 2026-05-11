@@ -1,8 +1,9 @@
 from fastapi import FastAPI, APIRouter
 import uvicorn
+from database.database import lifespan
 from routers.youtube_router import youtube_router
 
-app = FastAPI()
+app = FastAPI(lifespan=lifespan)
 
 api_router = APIRouter(prefix="/api") #Главный роут
 

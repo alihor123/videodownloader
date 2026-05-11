@@ -1,10 +1,12 @@
 import asyncio
 import os
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 from starlette.background import BackgroundTask
 
+from database.db_tools import add_download_stat
+from services.rate_limiter import RateLimiter
 from services.youtube_service import (
     build_content_disposition,
     build_format_list,
@@ -13,6 +15,7 @@ from services.youtube_service import (
     format_duration,
     format_views,
     get_download_ydl_opts,
+    get_fast_format_url,
     get_info_ydl_opts,
     get_media_type,
     get_output_ext,
@@ -23,11 +26,14 @@ from services.youtube_service import (
 
 # Роутер для эндпоинтов, связанных с YouTube
 youtube_router = APIRouter(prefix="/youtube", tags=["youtube"])
+info_rate_limiter = RateLimiter(max_requests=20, period=60)
+download_rate_limiter = RateLimiter(max_requests=5, period=60)
 
 
 @youtube_router.get("/info")
 async def get_video_info(
     url: str = Query(..., description="Ссылка на видео YouTube"),
+    client_ip: str = Depends(info_rate_limiter),
 ):
     """
     Получаем информацию о видео:
@@ -62,10 +68,48 @@ async def get_video_info(
     }
 
 
-@youtube_router.get("/download")
-async def download_video(
+@youtube_router.get("/download-url")
+async def get_download_url(
+    request: Request,
     url: str = Query(..., description="Ссылка на YouTube видео"),
     height: str = Query(..., description="Качество из списка /info"),
+    client_ip: str = Depends(download_rate_limiter),
+):
+    """
+    Возвращает прямую ссылку на готовый mp4-формат, если YouTube отдаёт его без склейки.
+    """
+
+    # 1. Получаем прямую ссылку на быстрый формат
+    ydl_opts = get_info_ydl_opts()
+    try:
+        info = await asyncio.to_thread(extract_info, url, ydl_opts)
+    except Exception:
+        raise HTTPException(
+            status_code=400,
+            detail="Ой! Не удалось получить прямую ссылку. Попробуйте обычное скачивание.",
+        )
+
+    fast_format_url = get_fast_format_url(info, height)
+    if not fast_format_url:
+        raise HTTPException(status_code=404, detail="Быстрая ссылка не найдена")
+
+    await add_download_stat(
+        ip=client_ip,
+        user_agent=request.headers.get("user-agent"),
+        video_url=url,
+        format_value=height,
+        file_ext=get_output_ext(height),
+    )
+
+    return {"url": fast_format_url}
+
+
+@youtube_router.get("/download-file")
+async def download_file(
+    request: Request,
+    url: str = Query(..., description="Ссылка на YouTube видео"),
+    height: str = Query(..., description="Качество из списка /info"),
+    client_ip: str = Depends(download_rate_limiter),
 ):
     """
     Скачивает видео или аудио на сервер, готовит итоговый файл
@@ -109,6 +153,14 @@ async def download_video(
 
     file_size = os.path.getsize(tmp_path)
     print(f"  Файл готов: {file_size} байт", flush=True)
+
+    await add_download_stat(
+        ip=client_ip,
+        user_agent=request.headers.get("user-agent"),
+        video_url=url,
+        format_value=height,
+        file_ext=output_ext,
+    )
 
     # 6. Отдаём готовый файл стандартным ответом Starlette.
     # FileResponse выставит Content-Length, а background удалит временный файл после ответа.

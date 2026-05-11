@@ -2,13 +2,13 @@ import { useState } from 'react'
 import styles from './MainPage.module.css'
 import Header from './Header/Header'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading.js'
-import { getVideoInfo, triggerDownload } from '../../services/yt.api.js'
+import { downloadVideo, getVideoInfo } from '../../services/yt.api.js'
 import { ApiError } from '../../services/api.js'
 import Loading from "../../components/Loading/Loading.jsx"
 
 export default function MainPage() {
   const [searchQuery, setSearchQuery] = useState('')
-  const [selectedHeight, setSelectedHeight] = useState(null)
+  const [selectedFormat, setSelectedFormat] = useState(null)
   const [videoData, setVideoData] = useState(null)
   const [isLoading, onLoadingChange] = useDelayedLoading(500, false)
   const [isDownloading, setIsDownloading] = useState(false)
@@ -18,13 +18,13 @@ export default function MainPage() {
     if (!videoData?.formats?.length) return null
 
       const items = videoData.formats.map((fmt) => {
-        const isSelected = selectedHeight === fmt.height
+        const isSelected = selectedFormat?.height === fmt.height
 
         return (
           <button
             className={`${styles.qualityItem} ${isSelected ? styles.selected : ''}`}
             key={fmt.height}
-            onClick={() => setSelectedHeight(fmt.height)}
+            onClick={() => setSelectedFormat(fmt)}
           >
             <div className={styles.itemDescription}>
               <div className={styles.res}>{fmt.label}</div>
@@ -52,7 +52,7 @@ export default function MainPage() {
       setVideoData(data)
 
       if (data?.formats?.length) {
-        setSelectedHeight(data.formats[0].height)
+        setSelectedFormat(data.formats[0])
       }
     } catch (error) {
       if (error instanceof ApiError) {
@@ -69,21 +69,21 @@ export default function MainPage() {
   // Открывает ссылку в браузере — он сам скачает файл и покажет прогресс.
   async function downloadCurrentVideo() {
     const url = searchQuery.trim()
-    if (!url || selectedHeight == null) return
+    if (!url || !selectedFormat) return
 
-    
+    setIsDownloading(true)
 
     try {
-      triggerDownload(url, selectedHeight)
+      await downloadVideo(url, selectedFormat)
     } catch (error) {
-   
-
       if (error instanceof ApiError) {
         alert(error.message)
         return
       }
 
       throw error
+    } finally {
+      setIsDownloading(false)
     }
   }
 

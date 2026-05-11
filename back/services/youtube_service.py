@@ -175,6 +175,38 @@ def get_download_format(height):
     )
 
 
+def get_fast_format_url(info, height):
+    """Ищет готовый mp4-формат с видео и аудио, который можно отдать напрямую."""
+    try:
+        target_height = int(height)
+    except (TypeError, ValueError):
+        return None
+
+    best_format = None
+
+    for format_data in info.get("formats", []):
+        raw_height = format_data.get("height")
+        if not raw_height:
+            continue
+
+        if round_height(raw_height) != target_height:
+            continue
+
+        if not has_video_stream(format_data) or not has_audio_stream(format_data):
+            continue
+
+        if format_data.get("ext") != "mp4" or not format_data.get("url"):
+            continue
+
+        if best_format is None or get_filesize(format_data) > get_filesize(best_format):
+            best_format = format_data
+
+    if best_format is None:
+        return None
+
+    return best_format.get("url")
+
+
 def build_format_list(info):
     """Готовит список видео- и аудио-качеств для фронта."""
     formats_video_by_height = {}

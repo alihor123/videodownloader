@@ -25,6 +25,8 @@ back/.venv/
 .ruff_cache/
 .coverage
 htmlcov/
+back/database/*.sqlite3
+back/*.db
 
 # Environment and local secrets
 .env
