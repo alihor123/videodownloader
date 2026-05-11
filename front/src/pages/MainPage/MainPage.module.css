@@ -117,7 +117,7 @@
     font-family: var(--font-heading);
     font-weight: 700;
     font-size: 15px;
-    color: var(-text-main);
+    color: var(--text-main);
 }
 
 .qualityList {
