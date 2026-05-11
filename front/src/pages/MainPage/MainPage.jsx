@@ -2,7 +2,7 @@ import { useState } from 'react'
 import styles from './MainPage.module.css'
 import Header from './Header/Header'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading.js'
-import { getVideoInfo, getDownloadUrl, triggerDownload } from '../../services/yt.api.js'
+import { getVideoInfo, triggerDownload } from '../../services/yt.api.js'
 import { ApiError } from '../../services/api.js'
 import Loading from "../../components/Loading/Loading.jsx"
 
@@ -79,8 +79,7 @@ export default function MainPage() {
     setTimeout(() => setIsDownloading(false), 2000)
 
     try {
-      const downloadUrl = getDownloadUrl(url, selectedHeight)
-      triggerDownload(downloadUrl)
+      triggerDownload(url, selectedHeight)
     } catch (error) {
       setIsDownloading(false)
 

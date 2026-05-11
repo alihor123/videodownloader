@@ -10,17 +10,12 @@ export async function getVideoInfo(url) {
   return response.json()
 }
 
-// Возвращает прямую ссылку на скачивание видео.
-export function getDownloadUrl(url, height) {
-  const params = new URLSearchParams({ url, height })
-  return `/api/youtube/download?${params}`
-}
-
 // Открывает ссылку на скачивание в браузере.
 // Браузер сам качает файл и показывает прогресс в менеджере загрузок.
-export function triggerDownload(url) {
+export function triggerDownload(url, height) {
+  const params = new URLSearchParams({ url, height })
   const a = document.createElement('a')
-  a.href = url
+  a.href = `/api/youtube/download?${params}`
   document.body.appendChild(a)
   a.click()
   document.body.removeChild(a)
