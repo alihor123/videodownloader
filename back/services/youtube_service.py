@@ -7,13 +7,13 @@ from pathlib import Path
 
 import httpx
 import yt_dlp
+from config import settings
 
 
 # Общие настройки YouTube / yt-dlp
 YOUTUBE_EXTRACTOR_ARGS = {"youtube": ["player_client=android,ios,web"]}
 STANDARD_HEIGHTS = (144, 240, 360, 480, 720, 1080, 1440, 2160)
 MAX_AUDIO_BITRATE = 512
-TEMP_FILE_MAX_AGE_SEC = 90 * 60
 
 
 # Локальные пути проекта
@@ -328,7 +328,7 @@ async def stream_url(url):
 
 
 # Временные файлы и HTTP-ответ
-def cleanup_old_temp_files(max_age_sec=TEMP_FILE_MAX_AGE_SEC):
+def cleanup_old_temp_files(max_age_sec=settings.temp_file_max_age_sec):
     """Удаляет временные файлы, которые явно остались от старых скачиваний."""
     if not TEMP_DIR.exists():
         return

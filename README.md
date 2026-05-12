@@ -4,15 +4,20 @@
 
 Проект состоит из:
 
-- `front/` — React + Vite интерфейс.
-- `back/` — FastAPI API, `yt-dlp`, `ffmpeg`, SQLite-статистика.
+- `front/` - React + Vite интерфейс.
+- `back/` - FastAPI API, `yt-dlp`, `ffmpeg`, SQLite-статистика.
 
 ## Основная идея
 
-Пользователь вставляет ссылку на YouTube-видео. Фронт запрашивает у бэка метаданные и список доступных вариантов скачивания. Пользователь выбирает формат, после чего фронт запускает один из двух путей:
+Пользователь вставляет ссылку на YouTube-видео. Фронт запрашивает у бэка информацию о ролике и список доступных форматов. После выбора формата скачивание идет через задачу:
 
-- быстрый путь для готового mp4 с видео и аудио;
-- универсальный путь через серверный файл и ffmpeg.
+1. Фронт создает задачу скачивания.
+2. Бэк сразу возвращает `task_id`.
+3. Скачивание идет в фоне.
+4. Фронт polling-запросами получает `status`, `stage`, `message`, `progress`.
+5. Когда задача готова, фронт запускает скачивание через готовый `download_url`.
+
+Так ошибки не открываются отдельным JSON-файлом в браузере, а остаются в API задачи и могут быть показаны на основной странице.
 
 ## Фронт
 
@@ -26,26 +31,33 @@ API-обертка YouTube: `front/src/services/yt.api.js`.
 const [selectedFormat, setSelectedFormat] = useState(null)
 ```
 
-Это важно: `height` не всегда достаточно описывает вариант скачивания. У формата есть `height`, `ext`, `fast`, `label`, `size`.
+Формат из `/info` содержит:
 
-Скачивание запускается через:
-
-```js
-downloadVideo(url, selectedFormat)
+```json
+{
+  "height": 720,
+  "label": "720p",
+  "ext": "mp4",
+  "size": "~50 MB",
+  "fast": true
+}
 ```
 
-Текущая рабочая логика:
+`ext` нужен фронту для отображения. Для скачивания фронт передает только `height` и `fast`, а итоговый тип файла бэк определяет сам.
 
-- `format.fast === true` -> `/api/youtube/download-stream`;
-- иначе -> `/api/youtube/download-file`.
+Скачивание сейчас устроено так:
 
-В `yt.api.js` также оставлена альтернативная старая механика:
+- `createDownloadTask(url, selectedFormat)` создает задачу.
+- `getDownloadTask(taskId)` используется для polling.
+- `triggerDownload(downloadUrl)` запускает нативное скачивание готового результата.
+
+Polling находится в `MainPage.jsx`, потому что именно там живет React-состояние:
 
 ```js
-downloadVideoInNewWindow(url, format)
+const [downloadTask, setDownloadTask] = useState(null)
 ```
 
-Она получает direct URL через `/download-url` и открывает его в новой вкладке. Сейчас она не используется, но оставлена, чтобы можно было быстро вернуться к этой схеме.
+`yt.api.js` остается простым API-слоем и не хранит состояние интерфейса.
 
 ## Бэк
 
@@ -53,17 +65,27 @@ downloadVideoInNewWindow(url, format)
 
 YouTube router: `back/routers/youtube_router.py`.
 
-YouTube service/helpers: `back/services/youtube_service.py`.
+Низкоуровневая работа с YouTube / `yt-dlp`: `back/services/youtube_service.py`.
 
-### Роуты
+Жизненный цикл задачи скачивания: `back/services/youtube_download_task_service.py`.
+
+Константы скачивания и stage-сообщения: `back/services/youtube_download_constants.py`.
+
+## Роуты
 
 Все YouTube-роуты находятся под `/api/youtube`.
 
-`GET /info`
+### `GET /info`
 
 Получает метаданные видео и список форматов.
 
-Возвращает примерно:
+Параметры:
+
+```text
+url: string
+```
+
+Ответ примерно:
 
 ```json
 {
@@ -75,111 +97,178 @@ YouTube service/helpers: `back/services/youtube_service.py`.
     {
       "height": 720,
       "label": "720p",
-      "size": "~50 MB",
       "ext": "mp4",
+      "size": "~50 MB",
       "fast": true
     }
   ]
 }
 ```
 
-`GET /download-stream`
+### `POST /download-tasks`
 
-Fast-путь. Для готового mp4-формата с видео и аудио:
+Создает задачу скачивания и сразу возвращает ее текущее состояние.
 
-- получает direct URL через `yt-dlp`;
-- читает его через `httpx`;
-- отдает пользователю через `StreamingResponse`;
-- не пишет файл в `tmp`;
-- не запускает ffmpeg.
-
-Это компромиссный вариант: сервер все еще гонит трафик через себя, но не хранит файл и не склеивает потоки.
-
-`GET /download-file`
-
-Универсальный путь. Работает для всех вариантов:
-
-- скачивает через `yt-dlp`;
-- при необходимости склеивает видео+аудио через ffmpeg;
-- для аудио делает mp3 через postprocessor;
-- сохраняет временный файл в `back/tmp`;
-- отдает файл через `FileResponse`;
-- после ответа удаляет временный файл.
-
-`GET /download-url`
-
-Старый fast-путь, оставлен на будущее. Возвращает JSON с direct URL:
+Тело запроса:
 
 ```json
-{ "url": "https://..." }
+{
+  "url": "https://www.youtube.com/watch?v=...",
+  "format": {
+    "height": 720,
+    "fast": true
+  }
+}
 ```
 
-Сейчас основная фронтовая функция его не использует.
+Ответ:
 
-### Как определяется fast
+```json
+{
+  "task_id": "abc123",
+  "status": "queued",
+  "stage": "queued",
+  "message": "Задача создана",
+  "progress": null,
+  "error": null,
+  "download_url": null
+}
+```
 
-`build_format_list(info)` в `youtube_service.py` собирает форматы для фронта.
+После создания задачи router запускает ее в фоне:
 
-Для видео:
+```python
+asyncio.create_task(run_download_task(task.id))
+```
 
-- если выбранный формат уже содержит видео и аудио, `fast: true`;
-- если формат video-only и требует склейки с audio, `fast: false`.
+Тяжелые вызовы `yt-dlp` выполняются через `asyncio.to_thread(...)`, чтобы не блокировать event loop FastAPI.
 
-Для аудио сейчас:
+### `GET /download-tasks/{task_id}`
 
-- список отдается как mp3;
-- `fast: false`, потому что YouTube не отдает mp3 напрямую, нужна конвертация.
+Возвращает текущее состояние задачи для polling.
 
-Потенциальное расширение: можно добавить fast-audio m4a отдельными элементами списка, но тогда нужно внимательно обработать `ext`, React key и media type.
+Когда задача готова, в ответе появляется `download_url`:
 
-### Важные функции `youtube_service.py`
+```json
+{
+  "task_id": "abc123",
+  "status": "ready",
+  "stage": "ready",
+  "message": "Файл готов к скачиванию",
+  "progress": 100,
+  "error": null,
+  "download_url": "/api/youtube/download-tasks/abc123/download"
+}
+```
 
-`get_info_ydl_opts()`
+### `GET /download-tasks/{task_id}/download`
 
-Настройки `yt-dlp` для получения информации без скачивания.
+Отдает готовый результат задачи.
 
-`build_format_list(info)`
+Если задача `fast`, бэк стримит direct URL YouTube через `StreamingResponse`.
 
-Готовит список форматов для фронта.
+Если задача `file`, бэк отдает временный файл из `back/tmp` через `FileResponse`.
 
-`get_fast_format_url(info, height)`
+После отдачи результата задача удаляется из памяти. Для `file`-режима также удаляется временный файл.
 
-Ищет готовый mp4 с видео и аудио нужной высоты. Используется в `/download-stream` и `/download-url`.
+## Задачи скачивания
 
-`get_download_ydl_opts(...)`
+Задачи хранятся в памяти процесса:
 
-Готовит настройки `yt-dlp` для серверного скачивания.
+```python
+TASKS = {}
+TASKS_LOCK = RLock()
+```
 
-`create_download_paths(...)`
+`TASKS_LOCK` нужен, потому что задачу одновременно могут читать polling-запросы и обновлять фоновая задача скачивания.
 
-Создает безопасный временный путь для `yt-dlp`.
+Основные поля задачи:
 
-`cleanup_old_temp_files(...)`
+- `id` - идентификатор задачи.
+- `url` - ссылка на видео.
+- `height` - выбранная высота видео или audio bitrate.
+- `requested_fast` - хотел ли фронт fast-режим.
+- `status` - общее состояние задачи.
+- `stage` - конкретный этап работы.
+- `message` - текст для пользователя.
+- `progress` - общий прогресс подготовки файла.
+- `mode` - `fast` или `file`.
+- `direct_url` - direct URL для fast-режима.
+- `file_path` - путь к готовому временному файлу для file-режима.
 
-Удаляет временные файлы старше 90 минут из `back/tmp`.
+## Status и stage
 
-`build_content_disposition(...)`
+`status` отвечает на вопрос: что с задачей в целом.
 
-Готовит имя файла для скачивания с UTF-8 filename.
+Текущие значения:
+
+- `queued` - задача создана.
+- `running` - задача выполняется.
+- `ready` - результат готов.
+- `failed` - задача завершилась ошибкой.
+
+`stage` отвечает на вопрос: что сервер делает прямо сейчас.
+
+Текущие значения:
+
+- `queued`
+- `preparing`
+- `resolving_fast_url`
+- `fallback_to_file`
+- `downloading_file`
+- `downloading_video`
+- `downloading_audio`
+- `merging`
+- `decoding_audio`
+- `ready`
+- `failed`
+
+Русские тексты для `stage` лежат в `STAGE_MESSAGES` в `youtube_download_constants.py`.
+
+## Progress
+
+`progress` отдается одним числом, чтобы фронт мог сразу рисовать одну полоску.
+
+Для `mp3`:
+
+```text
+0..99  - скачивание аудио
+100    - файл готов
+```
+
+Для `mp4` в file-режиме:
+
+```text
+0..50   - скачивание видео
+50..99  - скачивание аудио
+100     - файл готов
+```
+
+Этап `merging` не имеет честного процента от `yt-dlp`, поэтому во время склейки меняется `stage/message`, а `progress` не пытается изображать точную скорость ffmpeg.
+
+Fast-режим обычно не требует progress bar: задача быстро готовит direct URL, а сам файл дальше скачивает браузер через `/download`.
+
+## Fast и fallback
+
+`fast: true` означает, что формат уже содержит видео и аудио в одном mp4 и его можно попробовать отдать без серверной склейки.
+
+При создании задачи:
+
+1. Если пользователь выбрал fast-формат, бэк пробует найти direct URL.
+2. Если direct URL найден, задача становится `ready` с `mode="fast"`.
+3. Если fast не сработал, задача автоматически переходит в обычный file-режим.
+
+Для audio/mp3 fast не используется, потому что YouTube не отдает готовый mp3 напрямую. Нужно скачать аудио и конвертировать через ffmpeg.
 
 ## Временные файлы
 
-Для `/download-file` временный путь создается через `tempfile.mkstemp()`.
+File-режим использует `back/tmp`.
 
-`mkstemp()` возвращает:
+Для временных путей используется `tempfile.mkstemp()`. Код закрывает и удаляет пустой файл, оставляя уникальный путь, по которому `yt-dlp` потом создает настоящий файл.
 
-- `tmp_fd` — открытый file descriptor;
-- `tmp_path` — путь к временному файлу.
+Старые временные файлы удаляются функцией `cleanup_old_temp_files(...)`. Текущий лимит возраста: 90 минут.
 
-Код закрывает и удаляет пустой файл, оставляя только уникальный путь. Потом `yt-dlp` сам создает итоговый файл по этому пути.
-
-Файл считается готовым после успешного завершения:
-
-```python
-extract_info(url, ydl_opts, download=True)
-```
-
-Этот вызов не возвращается, пока `yt-dlp` не закончил скачивание и postprocessing.
+После успешной отдачи файла через `/download-tasks/{task_id}/download` временный файл удаляется через background task Starlette.
 
 ## Статистика
 
@@ -191,14 +280,6 @@ SQLite + SQLAlchemy async.
 - `back/database/db_tools.py`
 - `back/config.py`
 
-Конфиг читается через `pydantic-settings`.
-
-`.env.example`:
-
-```env
-DATABASE_NAME=stats.db
-```
-
 Таблица `downloads` хранит:
 
 - `id`
@@ -209,26 +290,25 @@ DATABASE_NAME=stats.db
 - `format_value`
 - `file_ext`
 
-Запись статистики происходит при успешном получении direct URL/stream и при успешной подготовке файла.
+Статистика пишется после успешной подготовки fast-ссылки или успешной подготовки файла.
 
 ## Rate limit
 
 Файл: `back/services/rate_limiter.py`.
 
-Лимит по IP, без авторизации.
+Лимиты:
+
+- `/info`: 20 запросов в минуту на IP.
+- `/download-tasks` для fast-форматов: 10 запросов в минуту на IP.
+- `/download-tasks` для file-режима: 5 запросов за 30 минут на IP.
 
 IP берется из:
 
-- `x-forwarded-for`;
-- `x-real-ip`;
-- `request.client.host`.
+- `x-forwarded-for`
+- `x-real-ip`
+- `request.client.host`
 
-Текущие лимиты:
-
-- `/info`: 20 запросов в минуту на IP;
-- download-роуты: 5 запросов в минуту на IP.
-
-IP не является надежной идентификацией пользователя: VPN, NAT и мобильные сети могут менять поведение. Это простая защита от частого кликанья и случайного спама.
+Это простая защита от частого клика и случайного спама. IP не является надежной идентификацией пользователя.
 
 ## Зависимости и запуск
 
@@ -250,12 +330,23 @@ npm run dev
 
 Vite проксирует `/api` на `http://localhost:8000`.
 
+Основные настройки в `back/.env`:
+
+```env
+DATABASE_NAME=stats.db
+INFO_RATE_LIMIT_REQUESTS=20
+INFO_RATE_LIMIT_PERIOD_SEC=60
+FAST_DOWNLOAD_RATE_LIMIT_REQUESTS=10
+FAST_DOWNLOAD_RATE_LIMIT_PERIOD_SEC=60
+FILE_DOWNLOAD_RATE_LIMIT_REQUESTS=5
+FILE_DOWNLOAD_RATE_LIMIT_PERIOD_SEC=1800
+TEMP_FILE_MAX_AGE_SEC=5400
+```
+
 ## Важные нюансы
 
 - `ffmpeg.exe` ожидается в `back/bin/ffmpeg.exe`.
-- `back/tmp` используется только для `/download-file`.
-- `back/*.db`, `back/database/*.sqlite3`, `back/tmp`, `back/bin` игнорируются git.
-- Cookies сейчас не подключаются к `yt-dlp`. Если YouTube начинает отвечать `Sign in to confirm you're not a bot`, часто помогает смена IP/VPN. Cookies можно вернуть позже, но старые cookies могут мешать.
-- `download-stream` проще для UX, чем открытие direct URL в новой вкладке, но трафик все равно идет через сервер.
-- Самый быстрый и легкий для сервера вариант — direct URL в браузер, но он хуже контролируется: браузер может открыть медиа вместо скачивания.
-
+- `back/tmp` используется только для file-режима.
+- Старые прямые download-ручки удалены. Актуальная схема скачивания идет через `download-tasks`.
+- Задачи хранятся в памяти процесса. После перезапуска бэка они исчезают.
+- Cookies сейчас не подключаются к `yt-dlp`. Если YouTube отвечает `Sign in to confirm you're not a bot`, часто помогает смена IP/VPN. Cookies можно вернуть позже, но старые cookies могут мешать.

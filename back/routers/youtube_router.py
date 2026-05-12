@@ -5,6 +5,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from starlette.background import BackgroundTask, BackgroundTasks
 
+from config import settings
 from services.youtube_download_task_service import (
     create_download_task,
     delete_download_task,
@@ -28,8 +29,18 @@ from services.youtube_service import (
 
 # Роутер для эндпоинтов, связанных с YouTube
 youtube_router = APIRouter(prefix="/youtube", tags=["youtube"])
-info_rate_limiter = RateLimiter(max_requests=20, period=60)
-download_rate_limiter = RateLimiter(max_requests=5, period=60)
+info_rate_limiter = RateLimiter(
+    max_requests=settings.info_rate_limit_requests,
+    period=settings.info_rate_limit_period_sec,
+)
+fast_download_rate_limiter = RateLimiter(
+    max_requests=settings.fast_download_rate_limit_requests,
+    period=settings.fast_download_rate_limit_period_sec,
+)
+file_download_rate_limiter = RateLimiter(
+    max_requests=settings.file_download_rate_limit_requests,
+    period=settings.file_download_rate_limit_period_sec,
+)
 
 
 class DownloadFormat(BaseModel):
@@ -40,6 +51,15 @@ class DownloadFormat(BaseModel):
 class CreateDownloadTaskRequest(BaseModel):
     url: str
     format: DownloadFormat
+
+
+def download_task_rate_limiter(body: CreateDownloadTaskRequest, request: Request):
+    """Выбирает лимит по типу скачивания: fast мягче, file строже."""
+    if body.format.fast:
+        return fast_download_rate_limiter(request)
+
+    return file_download_rate_limiter(request)
+
 
 @youtube_router.get("/info")
 async def get_video_info(
@@ -77,7 +97,7 @@ async def get_video_info(
 async def create_youtube_download_task(
     body: CreateDownloadTaskRequest,
     request: Request,
-    client_ip: str = Depends(download_rate_limiter),
+    client_ip: str = Depends(download_task_rate_limiter),
 ):
     """
     Создает задачу скачивания и сразу возвращает task_id.

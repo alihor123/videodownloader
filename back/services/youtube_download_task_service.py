@@ -4,8 +4,10 @@ from datetime import datetime, timezone
 from threading import RLock
 from uuid import uuid4
 
+from config import settings
 from database.db_tools import add_download_stat
 from pydantic import BaseModel, ConfigDict
+from services.youtube_download_constants import get_stage_message
 from services.youtube_service import (
     create_download_paths,
     extract_info,
@@ -17,7 +19,6 @@ from services.youtube_service import (
     get_safe_title,
     remove_if_exists,
 )
-from services.youtube_download_stages import get_stage_message
 
 
 TASKS = {}
@@ -44,8 +45,8 @@ class DownloadTask(BaseModel):
     direct_url: str | None = None
     file_path: str | None = None
     safe_title: str = "video"
-    created_at: str = ""
-    updated_at: str = ""
+    created_at: datetime
+    updated_at: datetime
 
 
 class DownloadTaskResponse(BaseModel):
@@ -61,8 +62,8 @@ class DownloadTaskResponse(BaseModel):
 
 
 def now_date():
-    """Возвращает текущее UTC-время строкой для created_at/updated_at."""
-    return datetime.now(timezone.utc).isoformat()
+    """Возвращает текущее UTC-время для created_at/updated_at."""
+    return datetime.now(timezone.utc)
 
 
 def save_download_task(task):
@@ -81,6 +82,23 @@ def delete_download_task(task_id):
     """Закрывает задачу: удаляет ее из памяти, когда результат уже отдан браузеру."""
     with TASKS_LOCK:
         TASKS.pop(task_id, None)
+
+
+def cleanup_old_download_tasks(max_age_sec=settings.temp_file_max_age_sec):
+    """Удаляет старые задачи из памяти, чтобы не копить мусор."""
+    if not TASKS:
+        return
+
+    now = datetime.now(timezone.utc)
+    stale_task_ids = []
+
+    with TASKS_LOCK:
+        for task_id, task in TASKS.items():
+            if (now - task.created_at).total_seconds() > max_age_sec:
+                stale_task_ids.append(task_id)
+
+        for task_id in stale_task_ids:
+            TASKS.pop(task_id, None)
 
 
 def update_download_task(task_id, **values):
@@ -209,6 +227,8 @@ def get_download_response_data(task):
 
 def create_download_task(url, height, requested_fast, ip, user_agent):
     """Создает задачу и сохраняет ее в памяти до запуска фоновой работы."""
+    cleanup_old_download_tasks()
+
     height = str(height)
     current_time = now_date()
 
