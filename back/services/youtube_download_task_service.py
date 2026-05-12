@@ -322,6 +322,7 @@ async def prepare_fast_download(task_id):
         mode="fast",
         direct_url=direct_url,
         safe_title=get_safe_title(info),
+        progress=100,
     )
 
     await save_download_stat(task, file_ext)
@@ -381,11 +382,12 @@ async def run_download_task(task_id):
     if not task:
         return
 
-    update_download_task(
-        task_id,
-        status="running",
-        stage="preparing",
-    )
+        update_download_task(
+            task_id,
+            status="running",
+            stage="preparing",
+            progress=0,
+        )
 
     try:
         if task.requested_fast:

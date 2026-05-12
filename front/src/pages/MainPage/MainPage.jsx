@@ -37,6 +37,22 @@ export default function MainPage() {
   const [isLoading, onLoadingChange] = useDelayedLoading(0, false)
   const [isDownloading, setIsDownloading] = useState(false)
   const [infoError, setInfoError] = useState(null)
+  const [downloadError, setDownloadError] = useState(null)
+  
+  const isDownloadRunning =
+    Boolean(downloadTask) &&
+    downloadTask.status !== 'ready' &&
+    downloadTask.status !== 'failed'
+
+  const downloadMessage = downloadError
+    ? downloadError
+    : downloadTask?.message
+      ? `${downloadTask.message}${isDownloadRunning ? '...' : ''}`
+      : 'Готов к скачиванию'
+
+  const downloadProgress = downloadError ? 0 : downloadTask?.progress ?? 0
+  const downloadProgressValue = Math.max(0, Math.min(100, downloadProgress))
+  const downloadMessageClass = downloadError ? styles.downloadError : ''
 
   // Собирает список кнопок качества из данных API.
   function buildQualityItems() {
@@ -71,6 +87,7 @@ export default function MainPage() {
     onLoadingChange(true)
     setVideoData(null)
     setDownloadTask(null)
+    setDownloadError(null)
     setInfoError(null)
 
     try {
@@ -100,6 +117,7 @@ export default function MainPage() {
 
     setIsDownloading(true)
     setDownloadTask(null)
+    setDownloadError(null)
 
     try {
       let task = await createDownloadTask(url, selectedFormat)
@@ -118,10 +136,13 @@ export default function MainPage() {
       triggerDownload(task.download_url)
     } catch (error) {
       if (error instanceof ApiError) {
-        alert(error.message)
+        setDownloadTask(null)
+        setDownloadError(error.message)
+        console.log(error.message)
         return
       }
 
+      setDownloadTask(null)
       throw error
     } finally {
       setIsDownloading(false)
@@ -185,7 +206,29 @@ export default function MainPage() {
           )}
 
           {!isLoading && videoData && (
-            <div className={styles.footer}></div>
+            <div className={styles.footer}>
+              <div className={styles.footerContent}>
+                <div className={styles.downloadState}>
+                  <div className={`${styles.downloadMessage} ${downloadMessageClass}`}>
+                    {downloadMessage}
+                  </div>
+                  <div className={styles.downloadProgress}>{downloadProgressValue}%</div>
+                </div>
+                <div className={styles.downloadBar} aria-hidden="true">
+                  <div
+                    className={styles.downloadBarFill}
+                    style={{ width: `${downloadProgressValue}%` }}
+                  />
+                </div>
+              </div>
+              <button
+                className={styles.downloadButton}
+                onClick={downloadCurrentVideo}
+                disabled={isDownloading}
+              >
+                Скачать
+              </button>
+            </div>
           )}
 
         </div>

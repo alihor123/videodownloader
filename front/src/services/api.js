@@ -90,6 +90,10 @@ export class Api {
 
       return response
     } catch (error) {
+      if (error instanceof ApiError) {
+        throw error
+      }
+
       if (isPageUnloading) {
         return null
       }
