@@ -4,21 +4,16 @@ import Header from './Header/Header'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading.js'
 import {
   createDownloadTask,
-  getDownloadTask,
   getVideoInfo,
   triggerDownload,
+  waitDownloadTaskReady,
 } from '../../services/yt.api.js'
 import { Api, ApiError } from '../../services/api.js'
 import Loading from "../../components/Loading/Loading.jsx"
 
-const DOWNLOAD_TASK_POLL_INTERVAL_MS = 1000
 const TASK_ERROR_MESSAGES = {
   503: "Сервер уже занят, попробуйте чуть позже",
   500: "Не удалось подготовить скачивание. Попробуйте чуть позже",
-}
-
-function wait(ms) {
-  return new Promise((resolve) => window.setTimeout(resolve, ms))
 }
 
 export default function MainPage() {
@@ -95,11 +90,7 @@ export default function MainPage() {
       let task = await createDownloadTask(url, selectedFormat)
       setDownloadTask(task)
 
-      while (task.status !== "ready" && task.status !== "failed") {
-        await wait(DOWNLOAD_TASK_POLL_INTERVAL_MS)
-        task = await getDownloadTask(task.task_id)
-        setDownloadTask(task)
-      }
+      task = await waitDownloadTaskReady(task, setDownloadTask)
 
       if (task.status === "failed") {
         const errorCode = task.error_code ?? 500

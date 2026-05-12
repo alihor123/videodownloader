@@ -1,4 +1,11 @@
-import { Api } from "./api"
+import { Api, ApiError } from "./api"
+
+const DOWNLOAD_TASK_POLL_INTERVAL_MS = 1000
+const MAX_POLL_NETWORK_ERRORS = 3
+
+function wait(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms))
+}
 
 // Получает информацию о YouTube-видео: название, автор, длительность, список качеств.
 export async function getVideoInfo(url) {
@@ -38,4 +45,32 @@ export async function getDownloadTask(taskId) {
   const response = await Api.fetchGet(`/youtube/download-tasks/${taskId}`)
 
   return response.json()
+}
+
+export async function waitDownloadTaskReady(initialTask, onUpdate) {
+  let task = initialTask
+  let pollNetworkErrorCount = 0
+  onUpdate(task)
+
+  while (task.status !== "ready" && task.status !== "failed") {
+    await wait(DOWNLOAD_TASK_POLL_INTERVAL_MS)
+
+    try {
+      task = await getDownloadTask(task.task_id)
+      pollNetworkErrorCount = 0
+      onUpdate(task)
+    } catch (error) {
+      if (error instanceof ApiError && !error.status) {
+        pollNetworkErrorCount += 1
+
+        if (pollNetworkErrorCount <= MAX_POLL_NETWORK_ERRORS) {
+          continue
+        }
+      }
+
+      throw error
+    }
+  }
+
+  return task
 }
