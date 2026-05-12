@@ -4,7 +4,7 @@ export default function Header() {
   return (
     <header className={styles.header}>
       <div className={styles.title}>
-        video<span className={styles.accent}>downloader</span>
+        video<span className={styles.accent}>loader</span>
       </div>
       <p className={styles.subtitle}>Загружайте видео из YouTube</p>
     </header>

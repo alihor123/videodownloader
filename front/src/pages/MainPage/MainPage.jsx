@@ -10,10 +10,23 @@ import {
 } from '../../services/yt.api.js'
 import { Api, ApiError } from '../../services/api.js'
 import Loading from "../../components/Loading/Loading.jsx"
+import personIcon from '../../assets/icons/person.svg?raw'
+import scheduleIcon from '../../assets/icons/schedule.svg?raw'
+import visibilityIcon from '../../assets/icons/visibility.svg?raw'
 
 const TASK_ERROR_MESSAGES = {
   503: "Сервер уже занят, попробуйте чуть позже",
   500: "Не удалось подготовить скачивание. Попробуйте чуть позже",
+}
+
+function MetaIcon({ svg }) {
+  return (
+    <span
+      className={styles.metaIcon}
+      aria-hidden="true"
+      dangerouslySetInnerHTML={{ __html: svg }}
+    />
+  )
 }
 
 export default function MainPage() {
@@ -21,31 +34,32 @@ export default function MainPage() {
   const [selectedFormat, setSelectedFormat] = useState(null)
   const [videoData, setVideoData] = useState(null)
   const [downloadTask, setDownloadTask] = useState(null)
-  const [isLoading, onLoadingChange] = useDelayedLoading(500, false)
+  const [isLoading, onLoadingChange] = useDelayedLoading(0, false)
   const [isDownloading, setIsDownloading] = useState(false)
+  const [infoError, setInfoError] = useState(null)
 
   // Собирает список кнопок качества из данных API.
   function buildQualityItems() {
     if (!videoData?.formats?.length) return null
 
-      const items = videoData.formats.map((fmt) => {
-        const isSelected = selectedFormat?.height === fmt.height
+    const items = videoData.formats.map((fmt) => {
+      const isSelected = selectedFormat?.height === fmt.height
 
-        return (
-          <button
-            className={`${styles.qualityItem} ${isSelected ? styles.selected : ''}`}
-            key={fmt.height}
-            onClick={() => setSelectedFormat(fmt)}
-          >
-            <div className={styles.itemDescription}>
-              <div className={styles.res}>{fmt.label}</div>
-              <div className={styles.qualitySize}>{fmt.size}</div>
-              <div className={styles.format}>{fmt.ext}</div>
-              {fmt.fast && <div className={styles.format}>fast</div>}
-            </div>
-          </button>
-        )
-      })
+      return (
+        <button
+          className={`${styles.qualityItem} ${isSelected ? styles.selected : ''}`}
+          key={fmt.height}
+          onClick={() => setSelectedFormat(fmt)}
+        >
+          <div className={styles.itemDescription}>
+            <div className={styles.res}>{fmt.label}</div>
+            <div className={styles.qualitySize}>{fmt.size}</div>
+            <div className={styles.format}>{fmt.ext}</div>
+            {fmt.fast && <div className={styles.format}>fast</div>}
+          </div>
+        </button>
+      )
+    })
     return items
   }
 
@@ -57,6 +71,7 @@ export default function MainPage() {
     onLoadingChange(true)
     setVideoData(null)
     setDownloadTask(null)
+    setInfoError(null)
 
     try {
       const data = await getVideoInfo(url)
@@ -68,7 +83,7 @@ export default function MainPage() {
       }
     } catch (error) {
       if (error instanceof ApiError) {
-        alert(error.message)
+        setInfoError(error.message)
         return
       }
 
@@ -118,55 +133,59 @@ export default function MainPage() {
       <div className={styles.container}>
         <Header />
 
-        <div className={styles.searchContainer}>
-          <input
-            className={styles.searchInput}
-            type="text"
-            placeholder="Вставьте ссылку на видео"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && fetchVideo()}
-          />
-          <button className={styles.searchButton} onClick={fetchVideo}>
-            Найти
-          </button>
-        </div>
+        <div className={styles.content}>
+          <div className={styles.search}> 
+            <input
+              className={styles.searchInput}
+              type="text"
+              placeholder="Вставьте ссылку на видео"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && fetchVideo()}
+            />
+            <button className={styles.searchButton} onClick={fetchVideo}>
+              Найти
+            </button>
+          </div>
 
-        {videoData && !isLoading && !isDownloading && (
-          <div className={styles.content}>
+          {(isLoading || infoError) && (
+            <div className={styles.getInfo}>
+              {isLoading && <span className={styles.getInfoLoader} aria-hidden="true" />}
+              <span className={infoError ? styles.getInfoError : ''}>
+                {infoError ?? 'Получаем информацию...'}
+              </span>
+            </div>
+          )}
+
+          {!isLoading && videoData && (
             <div className={styles.videoInfo}>
               <div className={styles.videoTitle}>{videoData.title}</div>
               <div className={styles.videoMeta}>
-                <div>{videoData.uploader}</div>
-                <div>{videoData.duration}</div>
-                {videoData.views && <div>{videoData.views}</div>}
+                <div className={styles.metaItem}>
+                  <MetaIcon svg={personIcon} />
+                  <span>{videoData.uploader}</span>
+                </div>
+                <div className={styles.metaItem}>
+                  <MetaIcon svg={scheduleIcon} />
+                  <span>{videoData.duration}</span>
+                </div>
+                <div className={styles.metaItem}>
+                  <MetaIcon svg={visibilityIcon} />
+                  <span>{videoData.views}</span>
+                </div>
               </div>
             </div>
+          )}
 
-            <div className={styles.qualityHeader}>Качество</div>
+        </div>
 
-            <div className={styles.qualityList}>
-              {buildQualityItems()}
-            </div>
-
-            <button
-              className={styles.download}
-              onClick={downloadCurrentVideo}
-              disabled={isDownloading}
-            >
-              {isDownloading ? 'Скачивание...' : 'Скачать'}
-            </button>
-          </div>
-        )}
-
-        {(isLoading || isDownloading) && (
-          <div className={styles.content}>
-            {isLoading && <Loading />}
-            {isDownloading && downloadTask && `${downloadTask.message}`}
-            {downloadTask && downloadTask.progress && `: ${downloadTask.progress}`}
-          </div>
-        )}
+        
       </div>
     </main>
   )
 }
+
+
+
+
+
