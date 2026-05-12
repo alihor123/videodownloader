@@ -3,7 +3,7 @@ import asyncio
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
-from starlette.background import BackgroundTask, BackgroundTasks
+from starlette.background import BackgroundTasks
 
 from config import settings
 from services.youtube_download_task_service import (
@@ -150,17 +150,19 @@ async def download_youtube_task_file(task_id: str):
     }
 
     if response_data["mode"] == "fast" and response_data["direct_url"]:
+        delete_download_task(task_id)
+
         return StreamingResponse(
             stream_url(response_data["direct_url"]),
             media_type=response_data["media_type"],
             headers=headers,
-            background=BackgroundTask(delete_download_task, task_id),
         )
 
     if response_data["mode"] == "file" and response_data["file_path"]:
+        delete_download_task(task_id)
+
         background_tasks = BackgroundTasks()
         background_tasks.add_task(remove_if_exists, response_data["file_path"])
-        background_tasks.add_task(delete_download_task, task_id)
 
         return FileResponse(
             response_data["file_path"],

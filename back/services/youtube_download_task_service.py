@@ -90,15 +90,22 @@ def cleanup_old_download_tasks(max_age_sec=settings.temp_file_max_age_sec):
         return
 
     now = datetime.now(timezone.utc)
-    stale_task_ids = []
+    stale_tasks = []
 
     with TASKS_LOCK:
         for task_id, task in TASKS.items():
-            if (now - task.created_at).total_seconds() > max_age_sec:
-                stale_task_ids.append(task_id)
+            if task.status == "failed":
+                stale_tasks.append((task_id, task.file_path))
+                continue
 
-        for task_id in stale_task_ids:
+            if (now - task.created_at).total_seconds() > max_age_sec:
+                stale_tasks.append((task_id, task.file_path))
+
+        for task_id, _ in stale_tasks:
             TASKS.pop(task_id, None)
+
+    for _, file_path in stale_tasks:
+        remove_if_exists(file_path)
 
 
 def update_download_task(task_id, **values):
