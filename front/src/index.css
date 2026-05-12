@@ -48,6 +48,8 @@
   --progress-track: rgba(0, 0, 0, 0.08);
 
   --shadow-soft: 0 18px 50px rgba(0, 0, 0, 0.08);
+  --shadow-quiet: 0 8px 18px rgba(0, 0, 0, 0.06);
+  --shadow-quiet-hover: 0 10px 20px rgba(0, 0, 0, 0.08);
 }
 
 :root[data-theme="dark"] {
@@ -81,6 +83,8 @@
   --progress-track: rgba(255, 255, 255, 0.10);
 
   --shadow-soft: 0 18px 48px rgba(0, 0, 0, 0.21);
+  --shadow-quiet: 0 8px 18px rgba(0, 0, 0, 0.18);
+  --shadow-quiet-hover: 0 10px 20px rgba(0, 0, 0, 0.22);
 }
 
 * {

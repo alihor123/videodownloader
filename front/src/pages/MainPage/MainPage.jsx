@@ -46,20 +46,20 @@ export default function MainPage() {
       const isSelected = selectedFormat?.height === fmt.height
 
       return (
-        <button
-          className={`${styles.qualityItem} ${isSelected ? styles.selected : ''}`}
-          key={fmt.height}
-          onClick={() => setSelectedFormat(fmt)}
-        >
-          <div className={styles.itemDescription}>
-            <div className={styles.res}>{fmt.label}</div>
-            <div className={styles.qualitySize}>{fmt.size}</div>
-            <div className={styles.format}>{fmt.ext}</div>
-            {fmt.fast && <div className={styles.format}>fast</div>}
-          </div>
-        </button>
-      )
-    })
+          <button
+            className={`${styles.qualityItem} ${isSelected ? styles.selected : ''}`}
+            key={fmt.height}
+            onClick={() => setSelectedFormat(fmt)}
+          >
+            <div className={styles.itemDescription}>
+              <div className={styles.res}>{fmt.label}</div>
+              <div className={styles.qualitySize}>{fmt.size}</div>
+              <div className={styles.format}>{fmt.ext}</div>
+            </div>
+            {fmt.fast && <div className={styles.fastBadge}>fast</div>}
+          </button>
+        )
+      })
     return items
   }
 
@@ -175,6 +175,17 @@ export default function MainPage() {
                 </div>
               </div>
             </div>
+          )}
+
+          {!isLoading && videoData?.formats?.length && (
+            <div className={styles.qualitySection}>
+              <div className={styles.qualityHeader}>Качество</div>
+              <div className={styles.qualityList}>{buildQualityItems()}</div>
+            </div>
+          )}
+
+          {!isLoading && videoData && (
+            <div className={styles.footer}></div>
           )}
 
         </div>

@@ -9,6 +9,9 @@
 }
 
 .title {
+  display: flex;
+  align-items: center;
+  width: 100%;
   font-family: var(--font-heading);
   font-weight: 800;
   font-size: 30px;
@@ -17,6 +20,13 @@
 
 .accent {
   color: var(--primary);
+}
+
+.beta {
+  margin-left: auto;
+  font-weight: 500;
+  font-size: 25px;
+  color: var(--text-muted);
 }
 
 .subtitle {
