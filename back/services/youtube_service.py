@@ -284,13 +284,19 @@ def get_info_ydl_opts():
     }
 
 
-def get_download_ydl_opts(height, file_ext, download_path, progress_hook):
+def get_download_ydl_opts(
+    height,
+    file_ext,
+    download_path,
+    progress_hook,
+):
     """Собирает настройки yt-dlp для скачивания видео или аудио."""
     ydl_opts = {
         "format": get_download_format(height),
         "outtmpl": download_path,
         "ffmpeg_location": str(FFMPEG_PATH),
         "progress_hooks": [progress_hook],
+        "postprocessor_hooks": [progress_hook],
         "quiet": False,
         "no_warnings": True,
         "extractor_args": YOUTUBE_EXTRACTOR_ARGS,

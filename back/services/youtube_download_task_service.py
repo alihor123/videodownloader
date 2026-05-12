@@ -211,13 +211,14 @@ def create_progress_hook(task_id, height):
             )
             return
 
-        if data.get("status") == "finished":
-            if file_ext == "mp3":
-                stage = "decoding_audio"
-            else:
-                stage = "merging"
+        if data.get("status") == "started":
+            postprocessor = data.get("postprocessor")
+            if postprocessor == "Merger":
+                update_download_task(task_id, stage="merging")
+                return
 
-            update_download_task(task_id, stage=stage, progress=None)
+            if postprocessor == "ExtractAudio":
+                update_download_task(task_id, stage="decoding_audio")
 
     return progress_hook
 
