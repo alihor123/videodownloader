@@ -23,6 +23,13 @@ from services.youtube_service import (
 
 TASKS = {}
 TASKS_LOCK = RLock()
+ACTIVE_FILE_TASK_LIMIT_MESSAGE = "Сервер уже занят, попробуйте чуть позже"
+
+
+class DownloadTaskError(Exception):
+    def __init__(self, message, status_code):
+        super().__init__(message)
+        self.status_code = status_code
 
 
 class DownloadTask(BaseModel):
@@ -41,6 +48,7 @@ class DownloadTask(BaseModel):
     message: str = get_stage_message("queued")
     progress: int | None = None
     error: str | None = None
+    error_code: int | None = None
     mode: str | None = None
     direct_url: str | None = None
     file_path: str | None = None
@@ -58,6 +66,7 @@ class DownloadTaskResponse(BaseModel):
     message: str
     progress: int | None = None
     error: str | None = None
+    error_code: int | None = None
     download_url: str | None = None
 
 
@@ -82,6 +91,29 @@ def delete_download_task(task_id):
     """Закрывает задачу: удаляет ее из памяти, когда результат уже отдан браузеру."""
     with TASKS_LOCK:
         TASKS.pop(task_id, None)
+
+
+def get_active_file_task_count(exclude_task_id=None):
+    """Считает активные file-задачи, которые сейчас грузят yt-dlp/ffmpeg."""
+    with TASKS_LOCK:
+        active_count = 0
+
+        for task_id, task in TASKS.items():
+            if task_id == exclude_task_id:
+                continue
+
+            is_active = task.status in {"queued", "running"}
+            is_file_task = not task.requested_fast or task.mode == "file"
+
+            if is_active and is_file_task:
+                active_count += 1
+
+        return active_count
+
+
+def is_active_file_task_limit_reached(exclude_task_id=None):
+    """Проверяет, не уперлись ли мы в лимит активных file-задач из конфига."""
+    return get_active_file_task_count(exclude_task_id) >= settings.max_active_file_tasks
 
 
 def cleanup_old_download_tasks(max_age_sec=settings.temp_file_max_age_sec):
@@ -210,6 +242,7 @@ def serialize_download_task(task):
         message=task.message,
         progress=task.progress,
         error=task.error,
+        error_code=task.error_code,
     )
 
     if task.status == "ready":
@@ -300,6 +333,9 @@ async def prepare_file_download(task_id):
     if not task:
         return
 
+    if is_active_file_task_limit_reached(exclude_task_id=task_id):
+        raise DownloadTaskError(ACTIVE_FILE_TASK_LIMIT_MESSAGE, 503)
+
     file_ext = get_output_ext(task.height)
     download_path, tmp_path = create_download_paths(task.height, file_ext)
     progress_hook = create_progress_hook(task_id, task.height)
@@ -357,6 +393,18 @@ async def run_download_task(task_id):
                 return
 
         await prepare_file_download(task_id)
+    except DownloadTaskError as error:
+        task = get_download_task(task_id)
+        if task and task.file_path:
+            remove_if_exists(task.file_path)
+
+        update_download_task(
+            task_id,
+            status="failed",
+            stage="failed",
+            error=str(error),
+            error_code=error.status_code,
+        )
     except Exception as error:
         task = get_download_task(task_id)
         if task and task.file_path:
@@ -367,4 +415,5 @@ async def run_download_task(task_id):
             status="failed",
             stage="failed",
             error=str(error),
+            error_code=500,
         )

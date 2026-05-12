@@ -11,8 +11,8 @@ from services.youtube_download_task_service import (
     delete_download_task,
     get_download_response_data,
     get_download_task,
-    run_download_task,
     serialize_download_task,
+    run_download_task,
 )
 from services.rate_limiter import RateLimiter
 from services.youtube_service import (
@@ -110,6 +110,7 @@ async def create_youtube_download_task(
         ip=client_ip,
         user_agent=request.headers.get("user-agent"),
     )
+
     asyncio.create_task(run_download_task(task.id))
 
     return serialize_download_task(task)

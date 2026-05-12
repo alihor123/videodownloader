@@ -380,6 +380,9 @@ def create_download_paths(height, file_ext):
 
 def remove_if_exists(path):
     """Удаляет файл, если он существует."""
+    if not path:
+        return
+
     if os.path.exists(path):
         try:
             os.unlink(path)
