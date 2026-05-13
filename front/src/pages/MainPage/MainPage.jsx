@@ -1,15 +1,15 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import styles from './MainPage.module.css'
 import Header from './Header/Header'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading.js'
 import {
+  DOWNLOAD_TASK_POLL_INTERVAL_MS,
   createDownloadTask,
+  getDownloadTask,
   getVideoInfo,
   triggerDownload,
-  waitDownloadTaskReady,
 } from '../../services/yt.api.js'
 import { Api, ApiError } from '../../services/api.js'
-import Loading from "../../components/Loading/Loading.jsx"
 import personIcon from '../../assets/icons/person.svg?raw'
 import scheduleIcon from '../../assets/icons/schedule.svg?raw'
 import visibilityIcon from '../../assets/icons/visibility.svg?raw'
@@ -18,6 +18,7 @@ const TASK_ERROR_MESSAGES = {
   503: "Сервер уже занят, попробуйте чуть позже",
   500: "Не удалось подготовить скачивание. Попробуйте чуть позже",
 }
+const MAX_POLL_NETWORK_ERRORS = 3
 
 function MetaIcon({ svg }) {
   return (
@@ -38,11 +39,19 @@ export default function MainPage() {
   const [isDownloading, setIsDownloading] = useState(false)
   const [infoError, setInfoError] = useState(null)
   const [downloadError, setDownloadError] = useState(null)
-  
+
+  // Контроллер активного сценария скачивания:
+  // createDownloadTask -> polling waitDownloadTaskReady.
+  // Поиск информации (getVideoInfo) специально не отменяем по кнопке.
+  const downloadAbortControllerRef = useRef(null)
+
   const isDownloadRunning =
     Boolean(downloadTask) &&
     downloadTask.status !== 'ready' &&
     downloadTask.status !== 'failed'
+
+  // Единый флаг "скачивание в процессе" для кнопки Скачать/Отменить.
+  const isDownloadBusy = isDownloading || isDownloadRunning
 
   const downloadMessage = downloadError
     ? downloadError
@@ -55,6 +64,13 @@ export default function MainPage() {
   const downloadMessageClass = downloadError ? styles.downloadError : ''
   const contentClass = `${styles.content} ${videoData ? styles.contentLoaded : ''}`
 
+  // Простое ожидание между polling-запросами.
+  // Почему не в yt.api:
+  // это часть orchestration-логики экрана (UI-цикла), а не "чистого API".
+  function wait(ms) {
+    return new Promise((resolve) => window.setTimeout(resolve, ms))
+  }
+
   // Собирает список кнопок качества из данных API.
   function buildQualityItems() {
     if (!videoData?.formats?.length) return null
@@ -63,24 +79,25 @@ export default function MainPage() {
       const isSelected = selectedFormat?.height === fmt.height
 
       return (
-          <button
-            className={`${styles.qualityItem} ${isSelected ? styles.selected : ''}`}
-            key={fmt.height}
-            onClick={() => setSelectedFormat(fmt)}
-          >
-            <div className={styles.itemDescription}>
-              <div className={styles.res}>{fmt.label}</div>
-              <div className={styles.qualitySize}>{fmt.size}</div>
-              <div className={styles.format}>{fmt.ext}</div>
-            </div>
-            {fmt.fast && <div className={styles.fastBadge}>fast</div>}
-          </button>
-        )
-      })
+        <button
+          className={`${styles.qualityItem} ${isSelected ? styles.selected : ''}`}
+          key={fmt.height}
+          onClick={() => setSelectedFormat(fmt)}
+        >
+          <div className={styles.itemDescription}>
+            <div className={styles.res}>{fmt.label}</div>
+            <div className={styles.qualitySize}>{fmt.size}</div>
+            <div className={styles.format}>{fmt.ext}</div>
+          </div>
+          {fmt.fast && <div className={styles.fastBadge}>fast</div>}
+        </button>
+      )
+    })
     return items
   }
 
-  // Загружает информацию о видео по ссылке из поля ввода.
+  // Загружает информацию о видео.
+  // Важно: этот сценарий не отменяется кнопкой "Отменить" по твоему требованию.
   async function fetchVideo() {
     const url = searchQuery.trim()
     if (!url) return
@@ -111,20 +128,57 @@ export default function MainPage() {
     }
   }
 
-  // Создает задачу и обновляет downloadTask на каждом polling-шаге для будущего UI.
+  // Создает задачу скачивания и опрашивает её статус до ready/failed.
+  // Этот сценарий поддерживает ручную отмену через AbortController.
   async function downloadCurrentVideo() {
     const url = searchQuery.trim()
     if (!url || !selectedFormat) return
+
+    // На случай старого "висящего" контроллера сначала аккуратно его закрываем.
+    downloadAbortControllerRef.current?.abort()
+    const controller = new AbortController()
+    downloadAbortControllerRef.current = controller
 
     setIsDownloading(true)
     setDownloadTask(null)
     setDownloadError(null)
 
     try {
-      let task = await createDownloadTask(url, selectedFormat)
+      let task = await createDownloadTask(url, selectedFormat, controller.signal)
       setDownloadTask(task)
 
-      task = await waitDownloadTaskReady(task, setDownloadTask)
+      // Polling держим на уровне экрана:
+      // API-сервис только про HTTP-вызовы, состояние и цикл — забота UI.
+      let pollNetworkErrorCount = 0
+
+      while (task.status !== 'ready' && task.status !== 'failed') {
+        // Если пользователь нажал "Отменить", сразу выходим через AbortError.
+        // Это защитит от лишнего запроса даже до входа в getDownloadTask.
+        if (controller.signal.aborted) {
+          throw new DOMException("Operation aborted", "AbortError")
+        }
+
+        await wait(DOWNLOAD_TASK_POLL_INTERVAL_MS)
+        task = await getDownloadTask(task.task_id, controller.signal).catch((error) => {
+          // Для сетевых ошибок допускаем несколько быстрых повторов подряд.
+          // Так UI не "падает" из-за краткого сетевого дребезга.
+          if (error instanceof ApiError && !error.status) {
+            pollNetworkErrorCount += 1
+            if (pollNetworkErrorCount <= MAX_POLL_NETWORK_ERRORS) {
+              return null
+            }
+          }
+          throw error
+        })
+
+        // null означает "сетевой дребезг, пробуем еще раз".
+        if (!task) {
+          continue
+        }
+
+        pollNetworkErrorCount = 0
+        setDownloadTask(task)
+      }
 
       if (task.status === "failed") {
         const errorCode = task.error_code ?? 500
@@ -136,6 +190,11 @@ export default function MainPage() {
 
       triggerDownload(task.download_url)
     } catch (error) {
+      // Ручная отмена: это штатный путь, не показываем ошибку пользователю.
+      if (error?.name === "AbortError") {
+        return
+      }
+
       if (error instanceof ApiError) {
         setDownloadTask(null)
         setDownloadError(error.message)
@@ -145,8 +204,23 @@ export default function MainPage() {
       setDownloadTask(null)
       throw error
     } finally {
+      // Не затираем ref, если за время await уже стартовал новый сценарий.
+      if (downloadAbortControllerRef.current === controller) {
+        downloadAbortControllerRef.current = null
+      }
       setIsDownloading(false)
     }
+  }
+
+  // Отменяет только сценарий скачивания на фронте:
+  // - прерывает запросы/polling
+  // - чистит локальный UI-состояние процесса скачивания
+  function cancelDownloadFlow() {
+    downloadAbortControllerRef.current?.abort()
+    downloadAbortControllerRef.current = null
+    setIsDownloading(false)
+    setDownloadTask(null)
+    setDownloadError(null)
   }
 
   return (
@@ -155,7 +229,7 @@ export default function MainPage() {
         <Header />
 
         <div className={contentClass}>
-          <div className={styles.search}> 
+          <div className={styles.search}>
             <input
               className={styles.searchInput}
               type="text"
@@ -223,23 +297,14 @@ export default function MainPage() {
               </div>
               <button
                 className={styles.downloadButton}
-                onClick={downloadCurrentVideo}
-                disabled={isDownloading}
+                onClick={isDownloadBusy ? cancelDownloadFlow : downloadCurrentVideo}
               >
-                Скачать
+                {isDownloadBusy ? 'Отменить' : 'Скачать'}
               </button>
             </div>
           )}
-
         </div>
-
-        
       </div>
     </main>
   )
 }
-
-
-
-
-

@@ -1,13 +1,11 @@
-import { Api, ApiError } from "./api"
+import { Api } from "./api"
 
-const DOWNLOAD_TASK_POLL_INTERVAL_MS = 1000
-const MAX_POLL_NETWORK_ERRORS = 3
+// Интервал polling вынесен рядом с API-методом,
+// чтобы UI мог использовать то же значение без магических чисел.
+export const DOWNLOAD_TASK_POLL_INTERVAL_MS = 1000
 
-function wait(ms) {
-  return new Promise((resolve) => window.setTimeout(resolve, ms))
-}
-
-// Получает информацию о YouTube-видео: название, автор, длительность, список качеств.
+// Получает информацию о YouTube-видео.
+// Поиск информации специально не отменяется кнопкой "Отмена" в текущем UX.
 export async function getVideoInfo(url) {
   const params = new URLSearchParams({ url })
   const response = await Api.fetchGet(`/youtube/info?${params}`, {
@@ -17,8 +15,7 @@ export async function getVideoInfo(url) {
   return response.json()
 }
 
-// Открывает готовую ссылку на скачивание в браузере.
-// Браузер сам качает файл и показывает прогресс в менеджере загрузок.
+// Запускает браузерное скачивание готовой ссылки.
 export function triggerDownload(downloadUrl) {
   const a = document.createElement("a")
   a.href = downloadUrl
@@ -27,52 +24,37 @@ export function triggerDownload(downloadUrl) {
   document.body.removeChild(a)
 }
 
-// Создает задачу скачивания: ошибки и статусы теперь живут в task API.
-export async function createDownloadTask(url, format) {
-  const response = await Api.fetchPost("/youtube/download-tasks", {
-    url,
-    format: {
-      height: format.height,
-      fast: format.fast,
+// Создает задачу скачивания на backend.
+// signal позволяет прервать ожидание запроса на фронте.
+export async function createDownloadTask(url, format, signal) {
+  const response = await Api.fetchPost(
+    "/youtube/download-tasks",
+    {
+      url,
+      format: {
+        height: format.height,
+        fast: format.fast,
+      },
     },
-  }, {
-    429: "Вы сделали слишком много запросов. Попробуйте чуть позже или скачайте файл с меткой fast.",
-  })
+    {
+      429: "Вы сделали слишком много запросов. Попробуйте чуть позже или скачайте файл с меткой fast.",
+    },
+    undefined,
+    signal
+  )
 
   return response.json()
 }
 
-// Получает свежее состояние задачи.
-export async function getDownloadTask(taskId) {
-  const response = await Api.fetchGet(`/youtube/download-tasks/${taskId}`)
-
+// Получает текущее состояние задачи по task_id.
+// signal нужен, чтобы можно было прервать polling извне.
+export async function getDownloadTask(taskId, signal) {
+  const response = await Api.fetchGet(
+    `/youtube/download-tasks/${taskId}`,
+    {},
+    false,
+    undefined,
+    signal
+  )
   return response.json()
-}
-
-export async function waitDownloadTaskReady(initialTask, onUpdate) {
-  let task = initialTask
-  let pollNetworkErrorCount = 0
-  onUpdate(task)
-
-  while (task.status !== "ready" && task.status !== "failed") {
-    await wait(DOWNLOAD_TASK_POLL_INTERVAL_MS)
-
-    try {
-      task = await getDownloadTask(task.task_id)
-      pollNetworkErrorCount = 0
-      onUpdate(task)
-    } catch (error) {
-      if (error instanceof ApiError && !error.status) {
-        pollNetworkErrorCount += 1
-
-        if (pollNetworkErrorCount <= MAX_POLL_NETWORK_ERRORS) {
-          continue
-        }
-      }
-
-      throw error
-    }
-  }
-
-  return task
 }

@@ -1,29 +1,26 @@
 export const NETWORK_ERROR_MESSAGE =
   "Не удалось связаться с сервером. Проверьте соединение с интернетом или попробуйте позже"
 
-// Таймаут фронта не должен быть больше, чем у Nginx
+// Таймаут фронта не должен быть больше, чем у Nginx.
 const REQUEST_TIMEOUT_MS = 120_000
 
-// Флаг — страница закрывается. Нужен, чтобы не сыпать ошибками сети при закрытии вкладки.
+// Флаг закрытия страницы нужен, чтобы не показывать лишние ошибки при уходе со вкладки.
 let isPageUnloading = false
 
-// Срабатывает при закрытии вкладки (мобильные, Safari).
 window.addEventListener("pagehide", () => {
   isPageUnloading = true
 })
 
-// Дубль для десктопа, где pagehide может не сработать.
 window.addEventListener("beforeunload", () => {
   isPageUnloading = true
 })
 
-// Сбрасываем флаг при возврате из bfcache, иначе запросы перестанут работать.
 window.addEventListener("pageshow", () => {
   isPageUnloading = false
 })
 
 export class ApiError extends Error {
-  // Создает ошибку API с пользовательским сообщением и HTTP-статусом.
+  // Единый формат прикладной ошибки API.
   constructor(message, status) {
     super(message)
     this.name = "ApiError"
@@ -46,41 +43,79 @@ export class Api {
     504: "Сервер не ответил вовремя. Попробуйте позже",
   }
 
-  // Возвращает текст ошибки по HTTP-статусу с учетом переопределений конкретного запроса.
+  // Возвращает текст ошибки с учетом локальных overrides у конкретного запроса.
   static getErrorMessage(status, errors = {}, errorsReplace = false) {
     const errorMessages = errorsReplace ? errors : { ...Api.defaultErrors, ...errors }
     return errorMessages[status] ?? "Не удалось выполнить запрос. Попробуйте позже"
   }
 
-  // Собирает базовые JSON-заголовки для всех запросов к API.
   static getHeaders() {
     return {
       "Content-Type": "application/json",
     }
   }
 
-  // Выполняет fetch с ограничением по времени, чтобы интерфейс не ждал ответ бесконечно.
-  static async fetchWithTimeout(url, init, timeoutMs = REQUEST_TIMEOUT_MS) {
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+  // Выполняет fetch с таймаутом и поддержкой внешней отмены.
+  // externalSignal используется для ручной отмены из UI (кнопка "Отмена").
+  static async fetchWithTimeout(
+    url,
+    init,
+    timeoutMs = REQUEST_TIMEOUT_MS,
+    externalSignal
+  ) {
+    // Единый контроллер, который реально передается в fetch.
+    // В него "сводим" таймаут и ручную отмену.
+    const requestController = new AbortController()
+
+    // Прокидывает abort из внешнего сигнала в requestController.
+    const relayAbort = () => requestController.abort()
+
+    if (externalSignal) {
+      if (externalSignal.aborted) {
+        relayAbort()
+      } else {
+        // once:true — обработчик вызовется только один раз и удалится автоматически.
+        externalSignal.addEventListener("abort", relayAbort, { once: true })
+      }
+    }
+
+    // Таймаут также прерывает requestController.
+    const timeoutId = setTimeout(relayAbort, timeoutMs)
 
     try {
       return await fetch(url, {
         ...init,
-        signal: controller.signal,
+        signal: requestController.signal,
       })
     } finally {
       clearTimeout(timeoutId)
+
+      // На случай, если внешняя отмена не случилась, вручную снимаем слушатель.
+      if (externalSignal) {
+        externalSignal.removeEventListener("abort", relayAbort)
+      }
     }
   }
 
-  // Выполняет запрос и нормализует ошибки.
-  static async request(path, init, errors = {}, errorsReplace = false, timeoutMs = REQUEST_TIMEOUT_MS) {
+  // Общий pipeline запроса с нормализацией ошибок.
+  static async request(
+    path,
+    init,
+    errors = {},
+    errorsReplace = false,
+    timeoutMs = REQUEST_TIMEOUT_MS,
+    signal
+  ) {
     try {
-      const response = await Api.fetchWithTimeout(`/api${path}`, {
-        ...init,
-        headers: Api.getHeaders(),
-      }, timeoutMs)
+      const response = await Api.fetchWithTimeout(
+        `/api${path}`,
+        {
+          ...init,
+          headers: Api.getHeaders(),
+        },
+        timeoutMs,
+        signal
+      )
 
       if (!response.ok) {
         throw new ApiError(
@@ -111,13 +146,11 @@ export class Api {
     }
   }
 
-  // Выполняет GET-запрос через общий request pipeline.
-  static fetchGet(path, errors = {}, errorsReplace = false, timeoutMs = REQUEST_TIMEOUT_MS) {
-    return Api.request(path, { method: "GET" }, errors, errorsReplace, timeoutMs)
+  static fetchGet(path, errors = {}, errorsReplace = false, timeoutMs = REQUEST_TIMEOUT_MS, signal) {
+    return Api.request(path, { method: "GET" }, errors, errorsReplace, timeoutMs, signal)
   }
 
-  // Выполняет POST-запрос с JSON-body через общий request pipeline.
-  static fetchPost(path, body, errors = {}, errorsReplace = false, timeoutMs = REQUEST_TIMEOUT_MS) {
+  static fetchPost(path, body, errors = {}, errorsReplace = false, timeoutMs = REQUEST_TIMEOUT_MS, signal) {
     return Api.request(
       path,
       {
@@ -126,17 +159,16 @@ export class Api {
       },
       errors,
       errorsReplace,
-      timeoutMs
+      timeoutMs,
+      signal
     )
   }
 
-  // Выполняет DELETE-запрос через общий request pipeline.
-  static fetchDelete(path, errors = {}, errorsReplace = false, timeoutMs = REQUEST_TIMEOUT_MS) {
-    return Api.request(path, { method: "DELETE" }, errors, errorsReplace, timeoutMs)
+  static fetchDelete(path, errors = {}, errorsReplace = false, timeoutMs = REQUEST_TIMEOUT_MS, signal) {
+    return Api.request(path, { method: "DELETE" }, errors, errorsReplace, timeoutMs, signal)
   }
 
-  // Выполняет PUT-запрос с JSON-body через общий request pipeline.
-  static fetchPut(path, body, errors = {}, errorsReplace = false, timeoutMs = REQUEST_TIMEOUT_MS) {
+  static fetchPut(path, body, errors = {}, errorsReplace = false, timeoutMs = REQUEST_TIMEOUT_MS, signal) {
     return Api.request(
       path,
       {
@@ -145,7 +177,8 @@ export class Api {
       },
       errors,
       errorsReplace,
-      timeoutMs
+      timeoutMs,
+      signal
     )
   }
 }
