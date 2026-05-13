@@ -1,6 +1,7 @@
 export const NETWORK_ERROR_MESSAGE =
   "Не удалось связаться с сервером. Проверьте соединение с интернетом или попробуйте позже"
 
+// Таймаут фронта не должен быть больше, чем у Nginx
 const REQUEST_TIMEOUT_MS = 120_000
 
 // Флаг — страница закрывается. Нужен, чтобы не сыпать ошибками сети при закрытии вкладки.
@@ -35,7 +36,7 @@ export class Api {
     400: "Не удалось выполнить запрос. Проверьте данные и попробуйте снова",
     403: "Недостаточно прав для выполнения этого действия",
     404: "Запрошенные данные не найдены",
-    408: "Сервер отвечает дольше обычного. Попробуйте еще раз",
+    408: "Сервер не ответил вовремя. Попробуйте позже",
     409: "Данные уже изменились или конфликтуют с текущим состоянием",
     413: "Объем отправляемых данных слишком большой",
     422: "Не удалось обработать отправленные данные",
@@ -59,9 +60,9 @@ export class Api {
   }
 
   // Выполняет fetch с ограничением по времени, чтобы интерфейс не ждал ответ бесконечно.
-  static async fetchWithTimeout(url, init) {
+  static async fetchWithTimeout(url, init, timeoutMs = REQUEST_TIMEOUT_MS) {
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
 
     try {
       return await fetch(url, {
@@ -74,12 +75,12 @@ export class Api {
   }
 
   // Выполняет запрос и нормализует ошибки.
-  static async request(path, init, errors = {}, errorsReplace = false) {
+  static async request(path, init, errors = {}, errorsReplace = false, timeoutMs = REQUEST_TIMEOUT_MS) {
     try {
       const response = await Api.fetchWithTimeout(`/api${path}`, {
         ...init,
         headers: Api.getHeaders(),
-      })
+      }, timeoutMs)
 
       if (!response.ok) {
         throw new ApiError(
@@ -111,12 +112,12 @@ export class Api {
   }
 
   // Выполняет GET-запрос через общий request pipeline.
-  static fetchGet(path, errors = {}, errorsReplace = false) {
-    return Api.request(path, { method: "GET" }, errors, errorsReplace)
+  static fetchGet(path, errors = {}, errorsReplace = false, timeoutMs = REQUEST_TIMEOUT_MS) {
+    return Api.request(path, { method: "GET" }, errors, errorsReplace, timeoutMs)
   }
 
   // Выполняет POST-запрос с JSON-body через общий request pipeline.
-  static fetchPost(path, body, errors = {}, errorsReplace = false) {
+  static fetchPost(path, body, errors = {}, errorsReplace = false, timeoutMs = REQUEST_TIMEOUT_MS) {
     return Api.request(
       path,
       {
@@ -124,17 +125,18 @@ export class Api {
         body: JSON.stringify(body),
       },
       errors,
-      errorsReplace
+      errorsReplace,
+      timeoutMs
     )
   }
 
   // Выполняет DELETE-запрос через общий request pipeline.
-  static fetchDelete(path, errors = {}, errorsReplace = false) {
-    return Api.request(path, { method: "DELETE" }, errors, errorsReplace)
+  static fetchDelete(path, errors = {}, errorsReplace = false, timeoutMs = REQUEST_TIMEOUT_MS) {
+    return Api.request(path, { method: "DELETE" }, errors, errorsReplace, timeoutMs)
   }
 
   // Выполняет PUT-запрос с JSON-body через общий request pipeline.
-  static fetchPut(path, body, errors = {}, errorsReplace = false) {
+  static fetchPut(path, body, errors = {}, errorsReplace = false, timeoutMs = REQUEST_TIMEOUT_MS) {
     return Api.request(
       path,
       {
@@ -142,7 +144,8 @@ export class Api {
         body: JSON.stringify(body),
       },
       errors,
-      errorsReplace
+      errorsReplace,
+      timeoutMs
     )
   }
 }
