@@ -39,6 +39,7 @@ export async function createDownloadTask(url, format, signal) {
     {
       429: "Вы сделали слишком много запросов. Попробуйте чуть позже или скачайте файл с меткой fast.",
     },
+    false,
     undefined,
     signal
   )

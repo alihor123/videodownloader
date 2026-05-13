@@ -4,23 +4,7 @@ export const NETWORK_ERROR_MESSAGE =
 // Таймаут фронта не должен быть больше, чем у Nginx.
 const REQUEST_TIMEOUT_MS = 120_000
 
-// Флаг закрытия страницы нужен, чтобы не показывать лишние ошибки при уходе со вкладки.
-let isPageUnloading = false
-
-window.addEventListener("pagehide", () => {
-  isPageUnloading = true
-})
-
-window.addEventListener("beforeunload", () => {
-  isPageUnloading = true
-})
-
-window.addEventListener("pageshow", () => {
-  isPageUnloading = false
-})
-
 export class ApiError extends Error {
-  // Единый формат прикладной ошибки API.
   constructor(message, status) {
     super(message)
     this.name = "ApiError"
@@ -43,7 +27,6 @@ export class Api {
     504: "Сервер не ответил вовремя. Попробуйте позже",
   }
 
-  // Возвращает текст ошибки с учетом локальных overrides у конкретного запроса.
   static getErrorMessage(status, errors = {}, errorsReplace = false) {
     const errorMessages = errorsReplace ? errors : { ...Api.defaultErrors, ...errors }
     return errorMessages[status] ?? "Не удалось выполнить запрос. Попробуйте позже"
@@ -55,31 +38,23 @@ export class Api {
     }
   }
 
-  // Выполняет fetch с таймаутом и поддержкой внешней отмены.
-  // externalSignal используется для ручной отмены из UI (кнопка "Отмена").
   static async fetchWithTimeout(
     url,
     init,
     timeoutMs = REQUEST_TIMEOUT_MS,
     externalSignal
   ) {
-    // Единый контроллер, который реально передается в fetch.
-    // В него "сводим" таймаут и ручную отмену.
     const requestController = new AbortController()
-
-    // Прокидывает abort из внешнего сигнала в requestController.
     const relayAbort = () => requestController.abort()
 
     if (externalSignal) {
       if (externalSignal.aborted) {
         relayAbort()
       } else {
-        // once:true — обработчик вызовется только один раз и удалится автоматически.
         externalSignal.addEventListener("abort", relayAbort, { once: true })
       }
     }
 
-    // Таймаут также прерывает requestController.
     const timeoutId = setTimeout(relayAbort, timeoutMs)
 
     try {
@@ -89,15 +64,12 @@ export class Api {
       })
     } finally {
       clearTimeout(timeoutId)
-
-      // На случай, если внешняя отмена не случилась, вручную снимаем слушатель.
       if (externalSignal) {
         externalSignal.removeEventListener("abort", relayAbort)
       }
     }
   }
 
-  // Общий pipeline запроса с нормализацией ошибок.
   static async request(
     path,
     init,
@@ -130,15 +102,15 @@ export class Api {
         throw error
       }
 
-      if (isPageUnloading) {
-        return null
-      }
-
       if (error instanceof TypeError) {
         throw new ApiError(NETWORK_ERROR_MESSAGE)
       }
 
       if (error?.name === "AbortError") {
+        // Ручная отмена из UI: не превращаем в 408, чтобы экран мог тихо завершить сценарий.
+        if (signal?.aborted) {
+          throw error
+        }
         throw new ApiError(Api.getErrorMessage(408, errors, errorsReplace), 408)
       }
 
