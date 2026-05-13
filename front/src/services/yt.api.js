@@ -36,7 +36,7 @@ export async function createDownloadTask(url, format) {
       fast: format.fast,
     },
   }, {
-    429: "Слишком много запросов. Попробуйте чуть позже или скачайте файл с меткой fast.",
+    429: "Вы сделали слишком много запросов. Попробуйте чуть позже или скачайте файл с меткой fast.",
   })
 
   return response.json()

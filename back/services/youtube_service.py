@@ -18,7 +18,6 @@ MAX_AUDIO_BITRATE = 512
 
 # Локальные пути проекта
 BACK_DIR = Path(__file__).resolve().parent.parent
-FFMPEG_PATH = BACK_DIR / "bin" / "ffmpeg.exe"
 TEMP_DIR = BACK_DIR / "tmp"
 
 
@@ -294,7 +293,7 @@ def get_download_ydl_opts(
     ydl_opts = {
         "format": get_download_format(height),
         "outtmpl": download_path,
-        "ffmpeg_location": str(FFMPEG_PATH),
+        "ffmpeg_location": str(settings.ffmpeg_path),
         "progress_hooks": [progress_hook],
         "postprocessor_hooks": [progress_hook],
         "quiet": False,

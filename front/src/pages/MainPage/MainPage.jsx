@@ -53,6 +53,7 @@ export default function MainPage() {
   const downloadProgress = downloadError ? 0 : downloadTask?.progress ?? 0
   const downloadProgressValue = Math.max(0, Math.min(100, downloadProgress))
   const downloadMessageClass = downloadError ? styles.downloadError : ''
+  const contentClass = `${styles.content} ${videoData ? styles.contentLoaded : ''}`
 
   // Собирает список кнопок качества из данных API.
   function buildQualityItems() {
@@ -138,7 +139,6 @@ export default function MainPage() {
       if (error instanceof ApiError) {
         setDownloadTask(null)
         setDownloadError(error.message)
-        console.log(error.message)
         return
       }
 
@@ -154,7 +154,7 @@ export default function MainPage() {
       <div className={styles.container}>
         <Header />
 
-        <div className={styles.content}>
+        <div className={contentClass}>
           <div className={styles.search}> 
             <input
               className={styles.searchInput}

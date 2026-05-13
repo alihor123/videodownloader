@@ -417,6 +417,154 @@
     box-shadow: none;
 }
 
-@media (min-width: 1200px) {
-    
+@media (max-width: 900px) {
+    .container {
+        min-width: 0;
+        width: 100%;
+        margin: 0;
+        padding: 17px 14px 14px;
+    }
+
+    .content {
+        margin: 6px 0 0;
+        border-radius: 18px;
+    }
+
+    .contentLoaded {
+        flex: 1;
+    }
+
+    .search {
+        gap: 8px;
+        padding: 8px;
+        border-radius: 20px;
+    }
+
+    .searchInput {
+        height: 46px;
+        min-width: 0;
+        padding: 0 14px;
+        font-size: 13px;
+    }
+
+    .searchButton {
+        width: auto;
+        min-width: 96px;
+        height: 46px;
+        padding: 0 18px;
+        font-size: 14px;
+    }
+
+    .getInfo {
+        padding: 4px 12px 12px;
+        font-size: 14px;
+    }
+
+    .getInfoLoader {
+        width: 16px;
+        height: 16px;
+    }
+
+    .videoInfo {
+        padding: 4px 12px 12px;
+    }
+
+    .videoTitle {
+        font-size: 16px;
+    }
+
+    .videoMeta {
+        gap: 10px;
+        font-size: 13px;
+    }
+
+    .metaIcon {
+        width: 16px;
+        height: 16px;
+    }
+
+    .qualitySection {
+        padding: 10px 12px 5px;
+    }
+
+    .qualityHeader {
+        padding-bottom: 8px;
+        font-size: 16px;
+    }
+
+    .qualityList {
+        gap: 7px;
+        padding: 5px 6px 10px 4px;
+    }
+
+    .qualityItem {
+        min-height: 48px;
+        padding: 0 12px;
+        border-radius: 12px;
+    }
+
+    .itemDescription {
+        gap: 8px;
+    }
+
+    .res {
+        font-size: 14px;
+    }
+
+    .qualitySize,
+    .format {
+        font-size: 13px;
+    }
+
+    .fastBadge {
+        width: 52px;
+        height: 26px;
+        font-size: 13px;
+    }
+
+    .footer {
+        gap: 10px;
+        padding: 12px;
+    }
+
+    .footerContent {
+        gap: 8px;
+    }
+
+    .downloadMessage,
+    .downloadProgress {
+        font-size: 14px;
+    }
+
+    .downloadBar {
+        height: 7px;
+    }
+
+    .downloadButton {
+        min-width: 112px;
+        height: 42px;
+        padding: 0 18px;
+        font-size: 14px;
+    }
+}
+
+@media (max-width: 520px) {
+    .container {
+        padding: 15px 12px 12px;
+    }
+
+    .searchButton {
+        min-width: 86px;
+        padding: 0 14px;
+    }
+
+    .footer {
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 8px;
+    }
+
+    .downloadButton {
+        min-width: 94px;
+        padding: 0 14px;
+    }
 }
