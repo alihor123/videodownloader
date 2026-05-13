@@ -9,16 +9,16 @@ import {
   getVideoInfo,
   triggerDownload,
 } from '../../services/yt.api.js'
-import { Api, ApiError } from '../../services/api.js'
+import { Api, ApiAbortError, ApiError } from '../../services/api.js'
 import personIcon from '../../assets/icons/person.svg?raw'
 import scheduleIcon from '../../assets/icons/schedule.svg?raw'
 import visibilityIcon from '../../assets/icons/visibility.svg?raw'
 
 const TASK_ERROR_MESSAGES = {
-  503: "Сервер уже занят, попробуйте чуть позже",
-  500: "Не удалось подготовить скачивание. Попробуйте чуть позже",
+  503: 'Сервер уже занят, попробуйте чуть позже',
+  500: 'Не удалось подготовить скачивание. Попробуйте чуть позже',
 }
-const MAX_POLL_NETWORK_ERRORS = 3
+const MAX_POLL_NETWORK_ERRORS = 5
 
 function MetaIcon({ svg }) {
   return (
@@ -40,9 +40,6 @@ export default function MainPage() {
   const [infoError, setInfoError] = useState(null)
   const [downloadError, setDownloadError] = useState(null)
 
-  // Контроллер активного сценария скачивания:
-  // createDownloadTask -> polling waitDownloadTaskReady.
-  // Поиск информации (getVideoInfo) специально не отменяем по кнопке.
   const downloadAbortControllerRef = useRef(null)
 
   const isDownloadRunning =
@@ -50,7 +47,6 @@ export default function MainPage() {
     downloadTask.status !== 'ready' &&
     downloadTask.status !== 'failed'
 
-  // Единый флаг "скачивание в процессе" для кнопки Скачать/Отменить.
   const isDownloadBusy = isDownloading || isDownloadRunning
 
   const downloadMessage = downloadError
@@ -64,18 +60,14 @@ export default function MainPage() {
   const downloadMessageClass = downloadError ? styles.downloadError : ''
   const contentClass = `${styles.content} ${videoData ? styles.contentLoaded : ''}`
 
-  // Простое ожидание между polling-запросами.
-  // Почему не в yt.api:
-  // это часть orchestration-логики экрана (UI-цикла), а не "чистого API".
   function wait(ms) {
     return new Promise((resolve) => window.setTimeout(resolve, ms))
   }
 
-  // Собирает список кнопок качества из данных API.
   function buildQualityItems() {
     if (!videoData?.formats?.length) return null
 
-    const items = videoData.formats.map((fmt) => {
+    return videoData.formats.map((fmt) => {
       const isSelected = selectedFormat?.height === fmt.height
 
       return (
@@ -93,15 +85,13 @@ export default function MainPage() {
         </button>
       )
     })
-    return items
   }
 
-  // Загружает информацию о видео.
-  // Важно: этот сценарий не отменяется кнопкой "Отменить" по твоему требованию.
   async function fetchVideo() {
     const url = searchQuery.trim()
     if (!url) return
 
+    cancelDownloadFlow()
     onLoadingChange(true)
     setVideoData(null)
     setDownloadTask(null)
@@ -110,9 +100,7 @@ export default function MainPage() {
 
     try {
       const data = await getVideoInfo(url)
-
       setVideoData(data)
-
       if (data?.formats?.length) {
         setSelectedFormat(data.formats[0])
       }
@@ -121,66 +109,66 @@ export default function MainPage() {
         setInfoError(error.message)
         return
       }
-
       throw error
     } finally {
       onLoadingChange(false)
     }
   }
 
-  // Создает задачу скачивания и опрашивает её статус до ready/failed.
-  // Этот сценарий поддерживает ручную отмену через AbortController.
   async function downloadCurrentVideo() {
+    // 1) Собираем входные параметры текущего запуска.
     const url = searchQuery.trim()
     if (!url || !selectedFormat) return
 
-    // На случай старого "висящего" контроллера сначала аккуратно его закрываем.
+    // 2) Если остался старый активный сценарий, мягко прерываем его.
     downloadAbortControllerRef.current?.abort()
+
+    // 3) Создаем новый контроллер отмены только для этого запуска.
     const controller = new AbortController()
     downloadAbortControllerRef.current = controller
 
-    setIsDownloading(true)
+    // 4) Готовим UI к новому циклу скачивания.
     setDownloadTask(null)
-    setDownloadError(null)
+    
 
     try {
+      // 5) Просим backend создать задачу скачивания.
       let task = await createDownloadTask(url, selectedFormat, controller.signal)
       setDownloadTask(task)
+      setDownloadError(null)
+      setIsDownloading(true)
 
-      // Polling держим на уровне экрана:
-      // API-сервис только про HTTP-вызовы, состояние и цикл — забота UI.
+      // 6) Счетчик кратких сетевых сбоев во время polling.
       let pollNetworkErrorCount = 0
 
+      // 7) Опрос задачи, пока не получим финальный статус ready/failed.
       while (task.status !== 'ready' && task.status !== 'failed') {
-        // Если пользователь нажал "Отменить", сразу выходим через AbortError.
-        // Это защитит от лишнего запроса даже до входа в getDownloadTask.
-        if (controller.signal.aborted) {
-          throw new DOMException("Operation aborted", "AbortError")
-        }
-
+        // 7.1) Пауза между запросами, чтобы не перегружать backend.
         await wait(DOWNLOAD_TASK_POLL_INTERVAL_MS)
-        task = await getDownloadTask(task.task_id, controller.signal).catch((error) => {
-          // Для сетевых ошибок допускаем несколько быстрых повторов подряд.
-          // Так UI не "падает" из-за краткого сетевого дребезга.
+
+        try {
+          // 7.2) Берем свежий статус задачи.
+          task = await getDownloadTask(task.task_id, controller.signal)
+        } catch (error) {
+          // 7.3) ApiError без status = локальная/сетевая ошибка без HTTP-ответа.
+          // Даем несколько быстрых повторов, чтобы пережить "дребезг" сети.
           if (error instanceof ApiError && !error.status) {
             pollNetworkErrorCount += 1
             if (pollNetworkErrorCount <= MAX_POLL_NETWORK_ERRORS) {
-              return null
+              continue
             }
           }
+          // 7.4) Любую другую ошибку поднимаем выше.
           throw error
-        })
-
-        // null означает "сетевой дребезг, пробуем еще раз".
-        if (!task) {
-          continue
         }
 
+        // 7.5) Успешный poll: сбрасываем счетчик и обновляем прогресс в UI.
         pollNetworkErrorCount = 0
         setDownloadTask(task)
       }
 
-      if (task.status === "failed") {
+      // 8) Если backend завершил задачу с ошибкой, превращаем в ApiError.
+      if (task.status === 'failed') {
         const errorCode = task.error_code ?? 500
         throw new ApiError(
           Api.getErrorMessage(errorCode, TASK_ERROR_MESSAGES),
@@ -188,33 +176,36 @@ export default function MainPage() {
         )
       }
 
+      // 9) Задача готова: запускаем браузерное скачивание.
       triggerDownload(task.download_url)
     } catch (error) {
-      // Ручная отмена: это штатный путь, не показываем ошибку пользователю.
-      if (error?.name === "AbortError") {
+      // 10) Ручная отмена — штатный путь, не показываем как ошибку.
+      if (error instanceof ApiAbortError || error?.name === 'AbortError') {
         return
       }
 
+      // 11) Ожидаемые прикладные ошибки показываем в UI.
       if (error instanceof ApiError) {
         setDownloadTask(null)
         setDownloadError(error.message)
         return
       }
 
+      // 12) Неизвестные ошибки пробрасываем выше для отладки.
       setDownloadTask(null)
       throw error
     } finally {
-      // Не затираем ref, если за время await уже стартовал новый сценарий.
+      // 13) Чистим ref только если он все еще указывает на текущий контроллер.
+      // Это защищает от гонки, если уже стартовал новый сценарий.
       if (downloadAbortControllerRef.current === controller) {
         downloadAbortControllerRef.current = null
       }
+
+      // 14) В любом исходе выключаем флаг "идет скачивание".
       setIsDownloading(false)
     }
   }
 
-  // Отменяет только сценарий скачивания на фронте:
-  // - прерывает запросы/polling
-  // - чистит локальный UI-состояние процесса скачивания
   function cancelDownloadFlow() {
     downloadAbortControllerRef.current?.abort()
     downloadAbortControllerRef.current = null
