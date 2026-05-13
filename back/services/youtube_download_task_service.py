@@ -382,12 +382,12 @@ async def run_download_task(task_id):
     if not task:
         return
 
-        update_download_task(
-            task_id,
-            status="running",
-            stage="preparing",
-            progress=0,
-        )
+    update_download_task(
+        task_id,
+        status="running",
+        stage="preparing",
+        progress=0,
+    )
 
     try:
         if task.requested_fast:

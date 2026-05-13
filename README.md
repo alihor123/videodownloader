@@ -1,137 +1,71 @@
 # videodownloader
 
-Пошаговая инструкция по развёртыванию проекта на пустом сервере.
+Продакшен-гайд для Linux-сервера (Ubuntu/Debian) с backend + frontend, `systemd`, `nginx`, HTTPS и нормальным повторным деплоем.
 
-Описание самого проекта вынесено отдельно: [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md).
+## Структура размещения
 
-## Что разворачиваем
-
-Проект состоит из двух частей:
-
-- `back/` - FastAPI backend, `yt-dlp`, SQLite, временные файлы скачивания
-- `front/` - React + Vite frontend
-
-Основной сценарий для продакшена:
+Проект не кладем в `/root`. Используем:
 
 ```text
-Пользователь -> nginx -> frontend static files
-                      -> /api -> backend на 127.0.0.1:8000
+/srv/apps/videodownloader/
+  repo/                  # git-репозиторий (back/, front/)
+  shared/                # постоянные данные (db, tmp)
 ```
 
-## Полная последовательность
+После клона ожидаем:
 
-Идём именно в таком порядке:
+```text
+/srv/apps/videodownloader/repo/back
+/srv/apps/videodownloader/repo/front
+```
 
-1. Подготовить сервер.
-2. Скачать проект через `git clone`.
-3. Настроить backend.
-4. Настроить `.env`.
-5. Проверить `ffmpeg`.
-6. Запустить backend вручную.
-7. Оформить backend как `systemd`-сервис.
-8. Собрать frontend.
-9. Настроить `nginx`.
-10. Проверить сайт.
-
----
-
-## 1. Подготовить сервер
-
-Пример ниже для Ubuntu/Debian.
+## 1) Подготовка сервера
 
 ```bash
 sudo apt update
 sudo apt upgrade -y
-sudo apt install -y git python3 python3-venv python3-pip nginx ffmpeg
+sudo apt install -y git python3 python3-venv python3-pip nginx ffmpeg curl rsync
 ```
 
-Node.js нужен для сборки frontend:
-
-```bash
-sudo apt install -y nodejs npm
-node -v
-npm -v
-```
-
-Если версия Node.js слишком старая, поставь LTS через NodeSource:
+Node.js (LTS):
 
 ```bash
 curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
 sudo apt install -y nodejs
+node -v
+npm -v
 ```
 
----
-
-## 2. Скачать проект
-
-Выбери папку, где будет лежать проект. В инструкции используется `/opt/videodownloader`.
+## 2) Клонирование
 
 ```bash
-sudo mkdir -p /opt/videodownloader
-sudo chown -R $USER:$USER /opt/videodownloader
-cd /opt/videodownloader
-git clone <URL_ТВОЕГО_РЕПОЗИТОРИЯ> .
+sudo mkdir -p /srv/apps/videodownloader
+sudo chown -R $USER:$USER /srv/apps/videodownloader
+cd /srv/apps/videodownloader
+git clone <YOUR_REPO_URL> repo
 ```
 
-После клонирования должны появиться:
-
-```text
-/opt/videodownloader/back
-/opt/videodownloader/front
-```
-
-Дальше `git clone` больше не повторяем. Все действия идут внутри уже скачанного проекта.
-
----
-
-## 3. Настроить backend
-
-Перейди в backend:
+## 3) Backend setup
 
 ```bash
-cd /opt/videodownloader/back
-```
-
-Создай виртуальное окружение:
-
-```bash
+cd /srv/apps/videodownloader/repo/back
 python3 -m venv venv
-```
-
-Активируй его:
-
-```bash
 source venv/bin/activate
-```
-
-Поставь зависимости:
-
-```bash
 pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
----
-
-## 4. Настроить `.env`
-
-Создай рабочий `.env` из примера:
+## 4) Backend `.env`
 
 ```bash
-cd /opt/videodownloader/back
-cp .env.example .env
+cd /srv/apps/videodownloader/repo/back
+cp .env.example .env 2>/dev/null || true
 ```
 
-Открой `.env` любым редактором:
-
-```bash
-nano .env
-```
-
-Пример нормального `.env` для Linux-сервера:
+Заполни `back/.env`:
 
 ```env
-DATABASE_NAME=stats.db
+DATABASE_NAME=/srv/apps/videodownloader/shared/stats.db
 FFMPEG_PATH=/usr/bin/ffmpeg
 INFO_RATE_LIMIT_REQUESTS=20
 INFO_RATE_LIMIT_PERIOD_SEC=60
@@ -143,140 +77,30 @@ MAX_ACTIVE_FILE_TASKS=5
 TEMP_FILE_MAX_AGE_SEC=5400
 ```
 
-### Параметры `.env`
-
-| Параметр | За что отвечает | Обычно ставить |
-|---|---|---|
-| `DATABASE_NAME` | SQLite-файл статистики. Если путь относительный, файл будет рядом с запуском backend | `stats.db` |
-| `FFMPEG_PATH` | Путь к бинарнику `ffmpeg`, который нужен `yt-dlp` для склейки и конвертации | `/usr/bin/ffmpeg` на Linux |
-| `INFO_RATE_LIMIT_REQUESTS` | Сколько раз один IP может запросить информацию о видео за период | `20` |
-| `INFO_RATE_LIMIT_PERIOD_SEC` | Период лимита для информации о видео в секундах | `60` |
-| `FAST_DOWNLOAD_RATE_LIMIT_REQUESTS` | Сколько fast-задач скачивания разрешено за период | `10` |
-| `FAST_DOWNLOAD_RATE_LIMIT_PERIOD_SEC` | Период fast-лимита в секундах | `60` |
-| `FILE_DOWNLOAD_RATE_LIMIT_REQUESTS` | Сколько обычных file-задач разрешено за период | `5` |
-| `FILE_DOWNLOAD_RATE_LIMIT_PERIOD_SEC` | Период file-лимита в секундах | `1800` |
-| `MAX_ACTIVE_FILE_TASKS` | Сколько file-задач backend может готовить одновременно | `5` |
-| `TEMP_FILE_MAX_AGE_SEC` | Через сколько секунд старые временные файлы и задачи считаются мусором | `5400` |
-
-Если `.env` не создать, backend возьмёт дефолты из [config.py](back/config.py).
-
----
-
-## 5. Проверить `ffmpeg`
-
-На Linux после установки через `apt` обычно путь такой:
-
-```text
-/usr/bin/ffmpeg
-```
-
-Проверить можно так:
+Создай директорию под данные:
 
 ```bash
-which ffmpeg
-which ffprobe
-ffmpeg -version
-ffprobe -version
+mkdir -p /srv/apps/videodownloader/shared
 ```
 
-Если `which ffmpeg` показал не `/usr/bin/ffmpeg`, впиши в `.env` тот путь, который он показал:
-
-```env
-FFMPEG_PATH=/путь/к/ffmpeg
-```
-
-### Если `ffmpeg` лежит внутри проекта
-
-Можно хранить бинарники прямо в проекте:
-
-```text
-back/bin/ffmpeg.exe
-back/bin/ffprobe.exe
-```
-
-Тогда в `.env`:
-
-```env
-FFMPEG_PATH=bin/ffmpeg.exe
-```
-
-Относительный путь считается от папки `back/`, поэтому `bin/ffmpeg.exe` превратится в:
-
-```text
-/opt/videodownloader/back/bin/ffmpeg.exe
-```
-
-На Linux расширение `.exe` не имеет магического значения. Это просто имя файла. Главное, чтобы файл был исполняемым:
+## 5) Проверка backend вручную
 
 ```bash
-chmod +x /opt/videodownloader/back/bin/ffmpeg.exe
-```
-
-### Windows-вариант
-
-Если разворачиваешь на Windows и `ffmpeg` лежит внутри проекта:
-
-```text
-back\bin\ffmpeg.exe
-back\bin\ffprobe.exe
-```
-
-В `.env`:
-
-```env
-FFMPEG_PATH=bin/ffmpeg.exe
-```
-
-Если `ffmpeg` установлен глобально, путь можно найти так:
-
-```powershell
-where ffmpeg
-where ffprobe
-```
-
-И указать полный путь:
-
-```env
-FFMPEG_PATH=C:\ffmpeg\bin\ffmpeg.exe
-```
-
----
-
-## 6. Запустить backend вручную
-
-Сначала проверяем backend без `systemd` и без `nginx`.
-
-```bash
-cd /opt/videodownloader/back
+cd /srv/apps/videodownloader/repo/back
 source venv/bin/activate
 uvicorn app:app --host 127.0.0.1 --port 8000
 ```
 
-Проверка на сервере:
+Проверь:
 
 ```text
 http://127.0.0.1:8000/docs
-```
-
-Можно проверить API:
-
-```text
 http://127.0.0.1:8000/api/youtube/info?url=<youtube_url>
 ```
 
-Если это не работает, дальше не идём. Сначала исправляем backend, `.env`, зависимости или `ffmpeg`.
+## 6) `systemd` сервис backend
 
----
-
-## 7. Запустить backend через `systemd`
-
-Создай unit-файл:
-
-```bash
-sudo nano /etc/systemd/system/videodownloader-backend.service
-```
-
-Содержимое:
+`/etc/systemd/system/videodownloader-backend.service`:
 
 ```ini
 [Unit]
@@ -287,29 +111,25 @@ After=network.target
 Type=simple
 User=www-data
 Group=www-data
-WorkingDirectory=/opt/videodownloader/back
-EnvironmentFile=/opt/videodownloader/back/.env
-ExecStart=/opt/videodownloader/back/venv/bin/uvicorn app:app --host 127.0.0.1 --port 8000
+WorkingDirectory=/srv/apps/videodownloader/repo/back
+EnvironmentFile=/srv/apps/videodownloader/repo/back/.env
+ExecStart=/srv/apps/videodownloader/repo/back/venv/bin/uvicorn app:app --host 127.0.0.1 --port 8000
 Restart=always
 RestartSec=3
+TimeoutStopSec=90
 
 [Install]
 WantedBy=multi-user.target
 ```
 
-Дай backend права на запись в `back/`, потому что там создаются `stats.db` и временные файлы:
+Запуск:
 
 ```bash
-sudo chown -R www-data:www-data /opt/videodownloader/back
-```
-
-Запусти сервис:
-
-```bash
+sudo chown -R www-data:www-data /srv/apps/videodownloader/repo/back /srv/apps/videodownloader/shared
 sudo systemctl daemon-reload
 sudo systemctl enable videodownloader-backend
-sudo systemctl start videodownloader-backend
-sudo systemctl status videodownloader-backend
+sudo systemctl restart videodownloader-backend
+sudo systemctl status videodownloader-backend --no-pager
 ```
 
 Логи:
@@ -318,40 +138,24 @@ sudo systemctl status videodownloader-backend
 journalctl -u videodownloader-backend -f
 ```
 
----
-
-## 8. Собрать frontend
+## 7) Frontend build
 
 ```bash
-cd /opt/videodownloader/front
+cd /srv/apps/videodownloader/repo/front
 npm ci
 npm run build
 ```
 
-После сборки появится:
-
-```text
-/opt/videodownloader/front/dist
-```
-
-Скопируй собранную статику в папку для `nginx`:
+Публикация статики:
 
 ```bash
 sudo mkdir -p /var/www/videodownloader
-sudo rsync -a --delete /opt/videodownloader/front/dist/ /var/www/videodownloader/
+sudo rsync -a --delete /srv/apps/videodownloader/repo/front/dist/ /var/www/videodownloader/
 ```
 
----
+## 8) `nginx` конфиг
 
-## 9. Настроить `nginx`
-
-Создай конфиг:
-
-```bash
-sudo nano /etc/nginx/sites-available/videodownloader
-```
-
-Пример конфига:
+`/etc/nginx/sites-available/videodownloader`:
 
 ```nginx
 server {
@@ -376,115 +180,63 @@ server {
 }
 ```
 
-Замени `example.com` на свой домен или IP.
-
-Включи конфиг:
+Включение:
 
 ```bash
-sudo ln -s /etc/nginx/sites-available/videodownloader /etc/nginx/sites-enabled/videodownloader
+sudo ln -sf /etc/nginx/sites-available/videodownloader /etc/nginx/sites-enabled/videodownloader
 sudo nginx -t
 sudo systemctl reload nginx
 ```
 
----
+## 9) HTTPS (обязательно)
 
-## 10. Проверить результат
-
-Проверь backend:
+Без HTTPS браузер будет ругаться на insecure download.
 
 ```bash
-systemctl status videodownloader-backend
+sudo apt install -y certbot python3-certbot-nginx
+sudo certbot --nginx -d example.com
 ```
 
-Проверь сайт:
+Проверь, что:
 
 ```text
-http://example.com
+https://example.com
+https://example.com/api/youtube/info?url=<youtube_url>
 ```
 
-Проверь API через nginx:
-
-```text
-http://example.com/api/youtube/info?url=<youtube_url>
-```
-
-Потом открой сайт, вставь YouTube-ссылку и попробуй получить список форматов.
-
----
-
-## 11. Что где хранится
-
-```text
-back/.env          настройки backend
-back/stats.db     SQLite-статистика, если DATABASE_NAME=stats.db
-back/tmp/         временные файлы скачивания
-back/bin/         локальные бинарники ffmpeg, если используешь проектный ffmpeg
-front/dist/       собранный frontend
-```
-
-Папку `back/tmp` вручную создавать обычно не нужно. Backend создаёт её сам, когда готовит file-загрузку.
-
----
-
-## 12. Частые ошибки
-
-### `502 Bad Gateway`
-
-`nginx` не может достучаться до backend.
-
-Проверь:
+## 10) Повторный деплой (обновление)
 
 ```bash
-systemctl status videodownloader-backend
-journalctl -u videodownloader-backend -f
-```
+cd /srv/apps/videodownloader/repo
+git fetch --all
+git pull --ff-only
 
-### `ffmpeg` не найден
-
-Проверь:
-
-```bash
-which ffmpeg
-cat /opt/videodownloader/back/.env
-```
-
-В `.env` должен быть реальный путь:
-
-```env
-FFMPEG_PATH=/usr/bin/ffmpeg
-```
-
-### `stats.db` не создаётся
-
-Скорее всего, нет прав на запись в `back/`.
-
-```bash
-sudo chown -R www-data:www-data /opt/videodownloader/back
-sudo systemctl restart videodownloader-backend
-```
-
-### Фронт открылся, но API не работает
-
-Проверь, что `nginx` проксирует `/api/` на `127.0.0.1:8000`.
-
-```bash
-sudo nginx -t
-sudo systemctl reload nginx
-```
-
-### Нужно обновить проект
-
-```bash
-cd /opt/videodownloader
-git pull
-cd back
+cd /srv/apps/videodownloader/repo/back
 source venv/bin/activate
 pip install -r requirements.txt
 sudo systemctl restart videodownloader-backend
-cd ../front
+
+cd /srv/apps/videodownloader/repo/front
 npm ci
 npm run build
 sudo rsync -a --delete dist/ /var/www/videodownloader/
 sudo systemctl reload nginx
 ```
 
+Пост-проверка:
+
+```bash
+systemctl is-active videodownloader-backend
+curl -sS "http://127.0.0.1:8000/api/youtube/info?url=https://www.youtube.com/watch?v=dQw4w9WgXcQ" | head -c 300
+```
+
+## 11) Быстрый troubleshooting
+
+- `Не удалось подготовить скачивание` для non-fast:
+  Проверь `FFMPEG_PATH` и наличие `/usr/bin/ffmpeg`.
+- `HTTP 502` от nginx:
+  Проверь `systemctl status videodownloader-backend` и `journalctl -u videodownloader-backend -f`.
+- Только один формат в `/info`:
+  Проверь `player_client` в `back/services/youtube_service.py`.
+- Зависания на YouTube:
+  Используй IPv4 в `yt-dlp` (`source_address: "0.0.0.0"` в Python API).

@@ -11,7 +11,19 @@ from config import settings
 
 
 # Общие настройки YouTube / yt-dlp
-YOUTUBE_EXTRACTOR_ARGS = {"youtube": ["player_client=android,ios,web"]}
+YOUTUBE_EXTRACTOR_ARGS = {
+    "youtube": {
+        "player_client": ["default", "android", "ios", "web"],
+    }
+}
+YDL_COMMON_OPTS = {
+    "quiet": True,
+    "no_warnings": True,
+    "source_address": "0.0.0.0",
+    "socket_timeout": 20,
+    "retries": 1,
+    "extractor_args": YOUTUBE_EXTRACTOR_ARGS,
+}
 STANDARD_HEIGHTS = (144, 240, 360, 480, 720, 1080, 1440, 2160)
 MAX_AUDIO_BITRATE = 512
 
@@ -87,9 +99,9 @@ def format_duration(duration_sec):
 
 
 def format_views(view_count):
-    """?????????? ????? ?????????? ??? ??????????? ?????."""
+    """Форматирует число просмотров для интерфейса."""
     if view_count is None:
-        return "??? ??????"
+        return "Нет данных"
 
     if view_count == 0:
         return "0"
@@ -276,11 +288,7 @@ def build_format_list(info):
 # Настройки и запуск yt-dlp
 def get_info_ydl_opts():
     """Собирает настройки yt-dlp для получения информации без скачивания."""
-    return {
-        "quiet": True,
-        "no_warnings": True,
-        "extractor_args": YOUTUBE_EXTRACTOR_ARGS,
-    }
+    return YDL_COMMON_OPTS.copy()
 
 
 def get_download_ydl_opts(
@@ -296,10 +304,9 @@ def get_download_ydl_opts(
         "ffmpeg_location": str(settings.ffmpeg_path),
         "progress_hooks": [progress_hook],
         "postprocessor_hooks": [progress_hook],
-        "quiet": False,
-        "no_warnings": True,
-        "extractor_args": YOUTUBE_EXTRACTOR_ARGS,
     }
+    ydl_opts.update(YDL_COMMON_OPTS)
+    ydl_opts["quiet"] = False
 
     if is_audio_download(height):
         bitrate = get_audio_download_bitrate(height)

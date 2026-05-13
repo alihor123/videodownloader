@@ -115,6 +115,11 @@ body {
   color: var(--text-main);
 }
 
+button {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
 main {
   display: flex;
   flex-direction: column;
