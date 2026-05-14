@@ -10,6 +10,7 @@ BASE_DIR = Path(__file__).resolve().parent
 class Settings(BaseSettings):
     database_name: str = "stats.db"
     ffmpeg_path: Path = BASE_DIR / "bin" / "ffmpeg.exe"
+    enable_docs: bool = False
 
     info_rate_limit_requests: int = 20
     info_rate_limit_period_sec: int = 60

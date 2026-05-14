@@ -3,6 +3,7 @@ import asyncio
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
+from starlette.background import BackgroundTask
 
 from config import settings
 from services.youtube_download_task_service import (
@@ -20,6 +21,7 @@ from services.youtube_service import (
     format_duration,
     format_views,
     get_info_ydl_opts,
+    remove_if_exists,
     stream_url,
 )
 
@@ -159,6 +161,7 @@ async def download_youtube_task_file(task_id: str):
             response_data["file_path"],
             media_type=response_data["media_type"],
             headers=headers,
+            background=BackgroundTask(remove_if_exists, response_data["file_path"]),
         )
 
     raise HTTPException(status_code=500, detail="Готовый файл не найден")

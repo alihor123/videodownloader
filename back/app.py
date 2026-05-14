@@ -1,9 +1,15 @@
 from fastapi import FastAPI, APIRouter
 import uvicorn
+from config import settings
 from database.database import lifespan
 from routers.youtube_router import youtube_router
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(
+    lifespan=lifespan,
+    docs_url="/docs" if settings.enable_docs else None,
+    redoc_url="/redoc" if settings.enable_docs else None,
+    openapi_url="/openapi.json" if settings.enable_docs else None,
+)
 
 api_router = APIRouter(prefix="/api") #Главный роут
 
