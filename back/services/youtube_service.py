@@ -24,6 +24,11 @@ YDL_COMMON_OPTS = {
     "retries": 1,
     "extractor_args": YOUTUBE_EXTRACTOR_ARGS,
 }
+
+if settings.ytdlp_cookies_file and settings.ytdlp_cookies_file.exists():
+    
+    YDL_COMMON_OPTS["cookiefile"] = str(settings.ytdlp_cookies_file)
+    
 STANDARD_HEIGHTS = (144, 240, 360, 480, 720, 1080, 1440, 2160)
 MAX_AUDIO_BITRATE = 512
 

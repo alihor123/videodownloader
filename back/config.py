@@ -10,6 +10,7 @@ BASE_DIR = Path(__file__).resolve().parent
 class Settings(BaseSettings):
     database_name: str = "stats.db"
     ffmpeg_path: Path = BASE_DIR / "bin" / "ffmpeg.exe"
+    ytdlp_cookies_file: Path | None = None
     enable_docs: bool = False
 
     info_rate_limit_requests: int = 20
@@ -32,6 +33,8 @@ class Settings(BaseSettings):
     def resolve_paths(self):
         if not self.ffmpeg_path.is_absolute():
             self.ffmpeg_path = (BASE_DIR / self.ffmpeg_path).resolve()
+        if self.ytdlp_cookies_file and not self.ytdlp_cookies_file.is_absolute():
+            self.ytdlp_cookies_file = (BASE_DIR / self.ytdlp_cookies_file).resolve()
 
         return self
 
