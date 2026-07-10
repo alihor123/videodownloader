@@ -10,7 +10,8 @@ BASE_DIR = Path(__file__).resolve().parent
 class Settings(BaseSettings):
     database_name: str = "stats.db"
     ffmpeg_path: Path = BASE_DIR / "bin" / "ffmpeg.exe"
-    ytdlp_cookies_file: Path | None = None
+    ytdlp_cookies_file: Path | None = BASE_DIR / "coockies.txt"
+    ytdlp_po_token: str | None = None
     enable_docs: bool = False
 
     info_rate_limit_requests: int = 20

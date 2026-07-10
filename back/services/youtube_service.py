@@ -11,24 +11,31 @@ from config import settings
 
 
 # Общие настройки YouTube / yt-dlp
+# Не фиксируем player_client: это может ограничивать доступные качества до 360p.
 YOUTUBE_EXTRACTOR_ARGS = {
-    "youtube": {
-        "player_client": ["default", "android", "ios", "web"],
-    }
+    "youtube": {}
 }
+
+if settings.ytdlp_po_token:
+    YOUTUBE_EXTRACTOR_ARGS["youtube"]["po_token"] = [f"web+{settings.ytdlp_po_token}"]
+
 YDL_COMMON_OPTS = {
     "quiet": True,
     "no_warnings": True,
     "source_address": "0.0.0.0",
     "socket_timeout": 20,
     "retries": 1,
-    "extractor_args": YOUTUBE_EXTRACTOR_ARGS,
+    # Нужно для YouTube JS challenge (sig/n), особенно при работе с cookies.
+    "js_runtimes": {"node": {}},
+    "remote_components": ["ejs:github"],
 }
 
+if YOUTUBE_EXTRACTOR_ARGS["youtube"]:
+    YDL_COMMON_OPTS["extractor_args"] = YOUTUBE_EXTRACTOR_ARGS
+
 if settings.ytdlp_cookies_file and settings.ytdlp_cookies_file.exists():
-    
     YDL_COMMON_OPTS["cookiefile"] = str(settings.ytdlp_cookies_file)
-    
+
 STANDARD_HEIGHTS = (144, 240, 360, 480, 720, 1080, 1440, 2160)
 MAX_AUDIO_BITRATE = 512
 
@@ -329,10 +336,27 @@ def get_download_ydl_opts(
     return ydl_opts
 
 
+def get_video_url(url):
+    """Убирает плейлист из ссылки, если в ней уже указано видео."""
+    parsed_url = urllib.parse.urlsplit(url)
+    query = urllib.parse.parse_qsl(parsed_url.query, keep_blank_values=True)
+    has_video_id = any(key == "v" and value for key, value in query)
+
+    if not has_video_id:
+        return url
+
+    query_without_playlist = [
+        (key, value) for key, value in query if key != "list"
+    ]
+    return urllib.parse.urlunsplit(
+        parsed_url._replace(query=urllib.parse.urlencode(query_without_playlist))
+    )
+
+
 def extract_info(url, ydl_opts, download=False):
     """Запускает yt-dlp и возвращает информацию о видео."""
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        return ydl.extract_info(url, download=download)
+        return ydl.extract_info(get_video_url(url), download=download)
 
 
 async def stream_url(url):
