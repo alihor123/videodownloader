@@ -13,6 +13,7 @@ import {
 import { Api, ApiAbortError, ApiError } from '../../services/api.js'
 import personIcon from '../../assets/icons/person.svg?raw'
 import scheduleIcon from '../../assets/icons/schedule.svg?raw'
+import visibilityIcon from '../../assets/icons/visibility.svg?raw'
 import searchIcon from '../../assets/icons/search.svg?raw'
 import closeIcon from '../../assets/icons/close.svg?raw'
 import stopIcon from '../../assets/icons/stop.svg?raw'
@@ -348,6 +349,12 @@ export default function MainPage() {
                 <PlatformBadge compact platform={{ id: videoData.platform, name: videoData.platform_name }} />
                 <div className={styles.videoTitle}>{videoData.title}</div>
                 <div className={styles.videoMeta}>
+                  {videoData.views && (
+                    <div className={styles.metaItem}>
+                      <MetaIcon svg={visibilityIcon} />
+                      <span>{videoData.views}</span>
+                    </div>
+                  )}
                   <div className={styles.metaItem}>
                     <MetaIcon svg={personIcon} />
                     <span>{videoData.uploader}</span>

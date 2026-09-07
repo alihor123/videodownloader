@@ -137,9 +137,11 @@ def main():
         # Все загрузки проходят через управляемый worker, включая цельные MP4.
         for item in formats:
             item["fast"] = False
+        view_count = info.get("view_count")
         emit("result", data={"title": info.get("title", "Видео"), "thumbnail": info.get("thumbnail"),
                              "uploader": info.get("uploader") or "Неизвестный автор",
-                             "duration": format_duration(info.get("duration", 0)), "views": format_views(info.get("view_count")),
+                             "duration": format_duration(info.get("duration", 0)),
+                             "views": format_views(view_count) if view_count is not None else None,
                              "formats": formats, "platform": platform["id"], "platform_name": platform["name"], "url": payload["url"]})
     else:
         directory = Path(payload["directory"])

@@ -73,7 +73,7 @@ async function main() {
   await page.getByRole('button', { name: 'Найти', exact: true }).click()
   await page.getByText(info.title, { exact: true }).waitFor()
   assert.equal(await page.getByText('Скопируйте ссылку', { exact: true }).count(), 0)
-  assert.equal(await page.getByText(info.views, { exact: true }).count(), 0)
+  assert.equal(await page.getByText(info.views, { exact: true }).count(), 1)
   assert.equal(await page.locator('img').count(), 1)
   assert.equal(infoStatusRequests, 0)
   console.log('PASS: metadata search uses one POST without status polling')

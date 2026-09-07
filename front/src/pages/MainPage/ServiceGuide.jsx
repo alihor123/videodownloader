@@ -58,7 +58,6 @@ export default function ServiceGuide({ platforms }) {
     <section className={styles.guide} aria-label="Как скачать видео">
       <div className={styles.guideHeader}>
         <h2>Как скачать видео</h2>
-        <p>Три простых шага — остальное сервис сделает сам.</p>
       </div>
       <div className={styles.guideSteps}>
         <GuideStep icon={linkIcon} title="Скопируйте ссылку">
