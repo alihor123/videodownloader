@@ -102,7 +102,8 @@ export class Api {
     errors = {},
     errorsReplace = false,
     timeoutMs = REQUEST_TIMEOUT_MS,
-    signal
+    signal,
+    preferBackendMessage = false
   ) {
     try {
       // 1) Выполняем HTTP-запрос через общий helper с таймаутом и abort-логикой.
@@ -118,8 +119,15 @@ export class Api {
 
       // 2) Нормализуем HTTP-ошибки (4xx/5xx) в единый ApiError.
       if (!response.ok) {
+        let message = Api.getErrorMessage(response.status, errors, errorsReplace)
+        if (preferBackendMessage) {
+          const body = await response.json().catch(() => null)
+          if (typeof body?.detail === 'string' && body.detail) {
+            message = body.detail
+          }
+        }
         throw new ApiError(
-          Api.getErrorMessage(response.status, errors, errorsReplace),
+          message,
           response.status
         )
       }
@@ -160,7 +168,7 @@ export class Api {
     return Api.request(path, { method: "GET" }, errors, errorsReplace, timeoutMs, signal)
   }
 
-  static fetchPost(path, body, errors = {}, errorsReplace = false, timeoutMs = REQUEST_TIMEOUT_MS, signal) {
+  static fetchPost(path, body, errors = {}, errorsReplace = false, timeoutMs = REQUEST_TIMEOUT_MS, signal, preferBackendMessage = false) {
     return Api.request(
       path,
       {
@@ -170,7 +178,8 @@ export class Api {
       errors,
       errorsReplace,
       timeoutMs,
-      signal
+      signal,
+      preferBackendMessage
     )
   }
 

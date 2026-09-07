@@ -36,8 +36,14 @@ class DownloadModel(Base):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    from services.media_download_task_service import start_tasks, shutdown_tasks
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    yield
-    await engine.dispose()
+    reaper = await start_tasks()
+    try:
+        yield
+    finally:
+        await shutdown_tasks(reaper)
+        await engine.dispose()

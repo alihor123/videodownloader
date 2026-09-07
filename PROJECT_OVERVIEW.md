@@ -1,6 +1,6 @@
 # О проекте
 
-`videodownloader` — сервис для получения информации о YouTube-видео и скачивания выбранного формата.
+`videodownloader` — сервис для получения информации и скачивания публичных видео с YouTube, Rutube, VK Видео, X/Twitter, TikTok и Instagram.
 
 ## Состав проекта
 
@@ -9,12 +9,12 @@
 
 ## Как работает сценарий скачивания
 
-1. Пользователь вставляет ссылку на YouTube-видео.
-2. Фронтенд запрашивает у backend метаданные и доступные форматы.
+1. Пользователь вставляет ссылку на поддерживаемое видео.
+2. Фронтенд одним `POST /api/media/info` запрашивает метаданные и доступные форматы.
 3. Пользователь выбирает качество.
-4. Фронтенд создает download-задачу (`POST /api/youtube/download-tasks`).
+4. Фронтенд создаёт download-задачу (`POST /api/media/download-tasks`).
 5. Backend запускает задачу в фоне.
-6. Фронтенд опрашивает статус задачи (`GET /api/youtube/download-tasks/{task_id}`).
+6. Фронтенд опрашивает статус задачи (`GET /api/media/download-tasks/{task_id}`).
 7. Когда задача готова, фронтенд получает `download_url` и запускает скачивание.
 
 ## Важные детали фронтенда
@@ -40,9 +40,9 @@
 ## Важные детали backend
 
 - Точка входа: `back/app.py`
-- Роутер YouTube: `back/routers/youtube_router.py`
-- Логика `yt-dlp`: `back/services/youtube_service.py`
-- Сервис задач скачивания: `back/services/youtube_download_task_service.py`
+- Роутер медиа: `back/routers/media_router.py`
+- Worker `yt-dlp`: `back/services/media_worker.py`
+- Сервис задач скачивания: `back/services/media_download_task_service.py`
 - Работа с БД: `back/database/`
 
 ### Что использует backend
@@ -67,3 +67,5 @@
 - Фронтенд работает через относительный префикс `/api`.
 - Для production нужен `nginx` как reverse proxy.
 - Таймауты `nginx` для `/api` должны быть не меньше фронтового таймаута.
+
+Подробности API, отмены, ограничений и проверок — в [MEDIA_DOWNLOAD_REPORT.md](MEDIA_DOWNLOAD_REPORT.md).

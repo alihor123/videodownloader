@@ -33,9 +33,6 @@ YDL_COMMON_OPTS = {
 if YOUTUBE_EXTRACTOR_ARGS["youtube"]:
     YDL_COMMON_OPTS["extractor_args"] = YOUTUBE_EXTRACTOR_ARGS
 
-if settings.ytdlp_cookies_file and settings.ytdlp_cookies_file.exists():
-    YDL_COMMON_OPTS["cookiefile"] = str(settings.ytdlp_cookies_file)
-
 STANDARD_HEIGHTS = (144, 240, 360, 480, 720, 1080, 1440, 2160)
 MAX_AUDIO_BITRATE = 512
 
@@ -87,6 +84,9 @@ def round_height(raw_height):
 # Подписи для интерфейса
 def format_filesize(filesize):
     """Превращает размер в байтах в понятную строку для интерфейса."""
+    if not filesize:
+        return None
+
     if filesize > 1073741824:
         return f"~{filesize / 1073741824:.1f} GB"
     if filesize > 1048576:
@@ -94,7 +94,7 @@ def format_filesize(filesize):
     if filesize > 1024:
         return f"~{filesize / 1024:.0f} KB"
 
-    return "~ MB"
+    return f"~{filesize} B"
 
 
 def format_duration(duration_sec):
@@ -102,7 +102,8 @@ def format_duration(duration_sec):
     if not duration_sec:
         return "0:00"
 
-    minutes, seconds = divmod(duration_sec, 60)
+    # Некоторые платформы (например, X) возвращают дробные секунды.
+    minutes, seconds = divmod(max(0, int(duration_sec)), 60)
     if minutes >= 60:
         hours, minutes = divmod(minutes, 60)
         return f"{hours}:{minutes:02d}:{seconds:02d}"

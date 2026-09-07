@@ -67,6 +67,8 @@ cp .env.example .env 2>/dev/null || true
 ```env
 DATABASE_NAME=/srv/apps/videodownloader/shared/stats.db
 FFMPEG_PATH=/usr/bin/ffmpeg
+YOUTUBE_COOKIES_FILE=/srv/apps/videodownloader/shared/youtube_cookies.txt
+INSTAGRAM_COOKIES_FILE=/srv/apps/videodownloader/shared/instagram_cookies.txt
 INFO_RATE_LIMIT_REQUESTS=20
 INFO_RATE_LIMIT_PERIOD_SEC=60
 FAST_DOWNLOAD_RATE_LIMIT_REQUESTS=10
@@ -75,7 +77,17 @@ FILE_DOWNLOAD_RATE_LIMIT_REQUESTS=5
 FILE_DOWNLOAD_RATE_LIMIT_PERIOD_SEC=1800
 MAX_ACTIVE_FILE_TASKS=5
 TEMP_FILE_MAX_AGE_SEC=5400
+MEDIA_CLIENT_TIMEOUT_SEC=90
+MEDIA_INFO_TIMEOUT_SEC=100
+MEDIA_TASK_TIMEOUT_SEC=900
+MEDIA_READY_TIMEOUT_SEC=120
+MEDIA_MAX_BYTES=2147483648
 ```
+
+Cookie-файлы необязательны. Для каждой платформы используй отдельную переменную
+`<SERVICE>_COOKIES_FILE` (`YOUTUBE`, `RUTUBE`, `VK`, `TWITTER`, `TIKTOK`, `INSTAGRAM`).
+Если путь пустой или файла нет, сервис запускается без cookies. Не клади cookies разных
+аккаунтов в один файл.
 
 Создай директорию под данные:
 
@@ -95,7 +107,7 @@ uvicorn app:app --host 127.0.0.1 --port 8000
 
 ```text
 http://127.0.0.1:8000/docs
-http://127.0.0.1:8000/api/youtube/info?url=<youtube_url>
+POST http://127.0.0.1:8000/api/youtube/info с JSON `{"url":"<youtube_url>"}`
 ```
 
 ## 6) `systemd` сервис backend
@@ -117,6 +129,8 @@ ExecStart=/srv/apps/videodownloader/repo/back/venv/bin/uvicorn app:app --host 12
 Restart=always
 RestartSec=3
 TimeoutStopSec=90
+KillMode=control-group
+SendSIGKILL=yes
 
 [Install]
 WantedBy=multi-user.target
@@ -171,6 +185,7 @@ server {
         proxy_connect_timeout 300s;
         proxy_send_timeout 300s;
         proxy_read_timeout 300s;
+        proxy_buffering off;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -191,7 +206,7 @@ sudo nginx -t
 sudo systemctl reload nginx
 ```
 
-Рекомендация: фронтовый `REQUEST_TIMEOUT_MS` должен быть меньше, чем `proxy_read_timeout` в `nginx`.
+Рекомендация: фронтовый `REQUEST_TIMEOUT_MS` должен быть меньше, чем `proxy_read_timeout` в `nginx`. `proxy_buffering off` важен для быстрой реакции отмены уже начатой передачи, но браузер или промежуточный прокси всё равно могут успеть буферизовать часть файла.
 
 ## 9) HTTPS (обязательно)
 
@@ -206,7 +221,7 @@ sudo certbot --nginx -d videoloader.a4dev.online
 
 ```text
 https://videoloader.a4dev.online
-https://videoloader.a4dev.online/api/youtube/info?url=<youtube_url>
+POST https://videoloader.a4dev.online/api/youtube/info с JSON `{"url":"<youtube_url>"}`
 ```
 
 ## 10) Повторный деплой (обновление)
@@ -232,7 +247,7 @@ sudo systemctl reload nginx
 
 ```bash
 systemctl is-active videodownloader-backend
-curl -sS "http://127.0.0.1:8000/api/youtube/info?url=https://www.youtube.com/watch?v=dQw4w9WgXcQ" | head -c 300
+curl -sS -X POST "http://127.0.0.1:8000/api/youtube/info" -H "Content-Type: application/json" -d '{"url":"https://www.youtube.com/watch?v=dQw4w9WgXcQ"}' | head -c 300
 ```
 
 ## 11) Быстрый troubleshooting

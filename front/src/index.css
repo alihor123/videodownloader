@@ -20,10 +20,10 @@
   --font-heading: "Archivo", system-ui, sans-serif;
   --font-base: "Inter", system-ui, sans-serif;
 
-  --primary: #ef4057;
-  --primary-light: #f26f7f;
-  --primary-soft: rgba(239, 64, 87, 0.09);
-  --primary-dark: #d9364d;
+  --primary: #df102c;
+  --primary-light: #ef3048;
+  --primary-soft: rgba(223, 16, 44, 0.09);
+  --primary-dark: #bd0d25;
 
   --bg-app: #fbfbfb;
   --bg-soft: #f6f6f6;
@@ -37,7 +37,7 @@
   --border-strong: rgba(0, 0, 0, 0.14);
 
   --text-main: #1f1f1f;
-  --text-accent: #d9364d;
+  --text-accent: #c80e28;
   --text-muted: #686868;
   --text-soft: #929292;
 
@@ -55,10 +55,10 @@
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  --primary: #ef4d61;
-  --primary-light: #f47b88;
-  --primary-soft: rgba(239, 77, 97, 0.11);
-  --primary-dark: #dc3f55;
+  --primary: #f02038;
+  --primary-light: #ff4659;
+  --primary-soft: rgba(240, 32, 56, 0.12);
+  --primary-dark: #d9142d;
 
   --bg-app: #171717;
   --bg-soft: #1c1c1c;
@@ -72,7 +72,7 @@
   --border-strong: rgba(255, 255, 255, 0.15);
 
   --text-main: #e4e4e4;
-  --text-accent: #f47b88;
+  --text-accent: #ff4659;
   --text-muted: #a0a0a0;
   --text-soft: #7f7f7f;
 

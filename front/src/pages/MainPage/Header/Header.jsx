@@ -7,7 +7,7 @@ export default function Header() {
         video<span className={styles.accent}>loader</span>
         <span className={styles.beta}>BETA</span>
       </div>
-      <p className={styles.subtitle}>Загружайте видео из YouTube</p>
+      <p className={styles.subtitle}>Любимые видео под рукой</p>
     </header>
   )
 }

@@ -2,7 +2,7 @@ from fastapi import FastAPI, APIRouter
 import uvicorn
 from config import settings
 from database.database import lifespan
-from routers.youtube_router import youtube_router
+from routers.media_router import media_router
 
 app = FastAPI(
     lifespan=lifespan,
@@ -13,12 +13,13 @@ app = FastAPI(
 
 api_router = APIRouter(prefix="/api") #Главный роут
 
-api_router.include_router(youtube_router, tags=["YouTube"])
+api_router.include_router(media_router, prefix="/media", tags=["Media"])
+# Старые клиенты используют тот же менеджер задач и ту же серверную отмену.
+api_router.include_router(media_router, prefix="/youtube", tags=["YouTube"], include_in_schema=False)
 
 app.include_router(api_router) #Подключение к главному роуту
 
 
 if __name__ == "__main__":
-    # reload=True отключён: он убивает in-progress скачивания при любом изменении файла.
-    # Для разработки можно включить обратно (reload=True), но скачивание будет снова ломаться.
-    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
+    # Reload запускает на Windows Selector loop, который не поддерживает asyncio subprocess.
+    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=False)
