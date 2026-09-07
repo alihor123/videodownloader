@@ -6,10 +6,10 @@ from pathlib import Path
 
 from config import settings
 from services.media_platforms import detect_platform, normalize_platform_url
-from services.youtube_service import (
-    build_format_list, extract_info, format_duration, format_views,
-    get_download_ydl_opts, get_info_ydl_opts, get_output_ext, get_safe_title,
+from services.media_formats import (
+    build_format_list, format_duration, format_views, get_output_ext, get_safe_title,
 )
+from services.ytdlp_service import extract_info, get_download_ydl_opts, get_info_ydl_opts
 
 platform_id = None
 
@@ -33,6 +33,11 @@ class Logger:
 def get_user_error(error, platform_id):
     """Не отдаём пользователю технические тексты yt-dlp и платформ."""
     reason = str(error).lower()
+    if platform_id == "tiktok" and any(phrase in reason for phrase in (
+        "unexpected response from webpage request", "impersonation",
+    )):
+        return ("TikTok отклонил запрос браузера. На сервере нужен пакет curl-cffi "
+                "для имитации браузера; cookies сами по себе эту ошибку не исправят")
     if "ip address is blocked" in reason:
         return "Платформа временно заблокировала доступ с IP сервера. Попробуйте позже"
     if platform_id == "instagram" and any(word in reason for word in (

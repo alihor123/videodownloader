@@ -20,6 +20,7 @@ async function main() {
   await fs.mkdir('tmp/ui-checks', { recursive: true })
   await page.goto('http://127.0.0.1:5179')
   await page.getByText('VK Видео', { exact: true }).waitFor()
+  assert.equal(await page.getByText('Вставляйте ссылку на публичное видео с любого из этих сервисов.', { exact: true }).count(), 0)
   await page.screenshot({ path: 'tmp/ui-checks/desktop.png', fullPage: true })
   await page.setViewportSize({ width: 390, height: 844 })
   await page.screenshot({ path: 'tmp/ui-checks/mobile.png', fullPage: true })

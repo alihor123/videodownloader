@@ -15,7 +15,7 @@ from fastapi import HTTPException
 from config import BASE_DIR, settings
 from services.media_platforms import detect_platform
 from services.process_tree import WindowsJob, stop_process_tree
-from services.youtube_download_constants import get_stage_message
+from services.media_messages import get_stage_message
 
 
 logger = logging.getLogger(__name__)

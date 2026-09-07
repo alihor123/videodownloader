@@ -19,9 +19,10 @@
 
 ## Важные детали фронтенда
 
-- Главная страница: `front/src/pages/MainPage/MainPage.jsx`
-- Общий API-класс: `front/src/services/api.js`
-- YouTube API-методы: `front/src/services/yt.api.js`
+- Главная страница: `front/src/pages/MainPage/MainPage.tsx`
+- Сценарий поиска, скачивания и отмены: `front/src/pages/MainPage/useMediaController.ts`
+- Общий API-класс: `front/src/services/api.ts`
+- Медиа API и типы: `front/src/services/yt.api.ts`, `front/src/services/media.types.ts`
 
 ### Отмена и таймауты
 
@@ -42,7 +43,10 @@
 - Точка входа: `back/app.py`
 - Роутер медиа: `back/routers/media_router.py`
 - Worker `yt-dlp`: `back/services/media_worker.py`
-- Сервис задач скачивания: `back/services/media_download_task_service.py`
+- Сервис задач скачивания: `back/services/media_tasks.py`
+- Форматы и подписи: `back/services/media_formats.py`
+- Настройки `yt-dlp`: `back/services/ytdlp_service.py`
+- Локальные cookie-файлы: `back/cookies/` (игнорируются Git)
 - Работа с БД: `back/database/`
 
 ### Что использует backend

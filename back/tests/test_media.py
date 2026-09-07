@@ -14,9 +14,9 @@ from fastapi import HTTPException
 from app import app
 from config import BASE_DIR, settings
 from routers.media_router import InfoRequest, ManagedFileResponse, get_info
-from services import media_download_task_service as manager
+from services import media_tasks as manager
 from services.media_platforms import detect_platform, normalize_platform_url
-from services.youtube_service import format_duration, format_filesize
+from services.media_formats import build_format_list, format_duration, format_filesize
 from services import process_tree
 from services.media_worker import get_platform_cookie_file, get_user_error
 
@@ -62,6 +62,18 @@ class PlatformsTest(unittest.TestCase):
     def test_unknown_filesize_is_not_shown_as_a_fake_size(self):
         self.assertIsNone(format_filesize(0))
 
+    def test_portrait_tiktok_quality_uses_shorter_side(self):
+        formats = build_format_list({"formats": [
+            {"width": 576, "height": 1024, "vcodec": "h264", "acodec": "aac",
+             "ext": "mp4", "filesize": 1024, "format_id": "h264_540p_428414-0"},
+            {"width": 720, "height": 1280, "vcodec": "h264", "acodec": "aac",
+             "ext": "mp4", "filesize": 2048, "format_id": "bytevc1_720p_626782-0"},
+            {"width": 1080, "height": 1920, "vcodec": "h264", "acodec": "aac",
+             "ext": "mp4", "filesize": 4096, "format_id": "bytevc1_1080p_1453265-0"},
+        ]})
+        self.assertEqual([item["height"] for item in formats], [1024, 1280, 1920])
+        self.assertEqual([item["label"] for item in formats], ["540p", "720p", "1080p"])
+
     def test_rutube_shorts_is_normalized_for_rutube_extractor(self):
         url = "https://rutube.ru/shorts/2f18c8153e2b589a2f895e81b400137e/"
         self.assertEqual(
@@ -84,6 +96,13 @@ class PlatformsTest(unittest.TestCase):
                  patch.object(settings, "youtube_cookies_file", Path(directory) / "youtube.txt"):
                 self.assertEqual(get_platform_cookie_file("instagram"), instagram_cookie)
                 self.assertIsNone(get_platform_cookie_file("youtube"))
+
+    def test_tiktok_browser_challenge_explains_missing_impersonation(self):
+        message = get_user_error(
+            Exception("Unexpected response from webpage request; impersonation unavailable"),
+            "tiktok",
+        )
+        self.assertIn("curl-cffi", message)
 
     def test_domains_and_short_links(self):
         examples = {"https://youtu.be/a": "youtube", "https://www.youtube.com/shorts/a": "youtube",
@@ -128,13 +147,15 @@ class CancellationTest(unittest.IsolatedAsyncioTestCase):
     async def running_task(self, name="download", mode="download"):
         task = manager.create_task(f"https://youtube.com/watch?v={name}", mode=mode)
         await wait_for_condition(lambda: (task.directory / "child.pid").exists() or task.runner.done(), 15)
-        if task.runner.done():
-            self.fail(task.error)
         # Ждём запись PID целиком.
         await wait_for_condition(lambda: bool((task.directory / "child.pid").read_text()), 15)
         content = (task.directory / "child.pid").read_text()
         pid = int(content)
         self.child_pids.append(pid)
+        # Fixture с вариантом ready успевает завершиться до следующей проверки;
+        # это успешный сценарий, если PID уже был записан.
+        if task.runner.done() and task.status != "ready":
+            self.fail(task.error)
         return task, pid
 
     async def test_cancel_download_kills_child_and_removes_partial_files(self):

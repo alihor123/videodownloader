@@ -32,7 +32,7 @@ back/*.db
 .env
 .env.*
 !.env.example
-back/yt_cookies.txt
+back/cookies/*.txt
 
 # Logs
 *.log

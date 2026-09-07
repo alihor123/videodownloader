@@ -1,16 +1,18 @@
+import type { PropsWithChildren } from 'react'
 import styles from './MainPage.module.css'
+import type { Platform, PlatformId } from '../../services/media.types'
 import arrowIcon from '../../assets/icons/arrow-right.svg?raw'
+import downloadIcon from '../../assets/icons/guide-download.svg?raw'
 import linkIcon from '../../assets/icons/guide-link.svg?raw'
 import qualityIcon from '../../assets/icons/guide-quality.svg?raw'
-import downloadIcon from '../../assets/icons/guide-download.svg?raw'
-import youtubeIcon from '../../assets/icons/platform-youtube.svg?raw'
-import rutubeIcon from '../../assets/icons/platform-rutube.svg?raw'
-import vkIcon from '../../assets/icons/platform-vk.svg?raw'
-import twitterIcon from '../../assets/icons/platform-twitter.svg?raw'
-import tiktokIcon from '../../assets/icons/platform-tiktok.svg?raw'
 import instagramIcon from '../../assets/icons/platform-instagram.svg?raw'
+import rutubeIcon from '../../assets/icons/platform-rutube.svg?raw'
+import tiktokIcon from '../../assets/icons/platform-tiktok.svg?raw'
+import twitterIcon from '../../assets/icons/platform-twitter.svg?raw'
+import vkIcon from '../../assets/icons/platform-vk.svg?raw'
+import youtubeIcon from '../../assets/icons/platform-youtube.svg?raw'
 
-const platformIcons = {
+const platformIcons: Partial<Record<PlatformId, string>> = {
   youtube: youtubeIcon,
   rutube: rutubeIcon,
   vk: vkIcon,
@@ -19,12 +21,18 @@ const platformIcons = {
   instagram: instagramIcon,
 }
 
-export function PlatformIcon({ platform }) {
+export function PlatformIcon({ platform }: { platform: PlatformId }) {
   const svg = platformIcons[platform]
-  return svg ? <span className={styles.platformIcon} aria-hidden="true" dangerouslySetInnerHTML={{ __html: svg }} /> : null
+  return svg ? (
+    <span
+      className={styles.platformIcon}
+      aria-hidden="true"
+      dangerouslySetInnerHTML={{ __html: svg }}
+    />
+  ) : null
 }
 
-export function PlatformBadge({ platform, compact = false }) {
+export function PlatformBadge({ platform, compact = false }: { platform: Platform; compact?: boolean }) {
   return (
     <div className={`${styles.platform} ${compact ? styles.platformCompact : ''}`}>
       <PlatformIcon platform={platform.id} />
@@ -33,7 +41,7 @@ export function PlatformBadge({ platform, compact = false }) {
   )
 }
 
-function GuideStep({ icon, title, children }) {
+function GuideStep({ icon, title, children }: PropsWithChildren<{ icon: string; title: string }>) {
   return (
     <article className={styles.guideStep}>
       <span className={styles.guideStepIcon} aria-hidden="true" dangerouslySetInnerHTML={{ __html: icon }} />
@@ -53,7 +61,7 @@ function StepArrow() {
   )
 }
 
-export default function ServiceGuide({ platforms }) {
+export default function ServiceGuide({ platforms }: { platforms: Platform[] }) {
   return (
     <section className={styles.guide} aria-label="Как скачать видео">
       <div className={styles.guideHeader}>
@@ -72,14 +80,16 @@ export default function ServiceGuide({ platforms }) {
           Дождитесь подготовки — файл появится в загрузках браузера.
         </GuideStep>
       </div>
-
       <div className={styles.platformsHeader}>
         <h2>Доступные платформы</h2>
-        <p>Вставляйте ссылку на публичное видео с любого из этих сервисов.</p>
       </div>
       <div className={styles.platforms} aria-label="Поддерживаемые платформы">
-        {platforms.map((platform) => <PlatformBadge key={platform.id} platform={platform} />)}
-        {!platforms.length && <p className={styles.guideNote}>Список платформ появится после подключения к серверу.</p>}
+        {platforms.map((platform) => (
+          <PlatformBadge key={platform.id} platform={platform} />
+        ))}
+        {!platforms.length && (
+          <p className={styles.guideNote}>Список платформ появится после подключения к серверу.</p>
+        )}
       </div>
       <p className={styles.guideNote}>Доступность зависит от платформы; временами отдельные ссылки могут работать нестабильно.</p>
     </section>

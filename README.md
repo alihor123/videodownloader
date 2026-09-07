@@ -67,8 +67,12 @@ cp .env.example .env 2>/dev/null || true
 ```env
 DATABASE_NAME=/srv/apps/videodownloader/shared/stats.db
 FFMPEG_PATH=/usr/bin/ffmpeg
-YOUTUBE_COOKIES_FILE=/srv/apps/videodownloader/shared/youtube_cookies.txt
-INSTAGRAM_COOKIES_FILE=/srv/apps/videodownloader/shared/instagram_cookies.txt
+YOUTUBE_COOKIES_FILE=/srv/apps/videodownloader/shared/cookies/youtube.txt
+RUTUBE_COOKIES_FILE=/srv/apps/videodownloader/shared/cookies/rutube.txt
+VK_COOKIES_FILE=/srv/apps/videodownloader/shared/cookies/vk.txt
+TWITTER_COOKIES_FILE=/srv/apps/videodownloader/shared/cookies/twitter.txt
+TIKTOK_COOKIES_FILE=/srv/apps/videodownloader/shared/cookies/tiktok.txt
+INSTAGRAM_COOKIES_FILE=/srv/apps/videodownloader/shared/cookies/instagram.txt
 INFO_RATE_LIMIT_REQUESTS=20
 INFO_RATE_LIMIT_PERIOD_SEC=60
 FAST_DOWNLOAD_RATE_LIMIT_REQUESTS=10
@@ -92,7 +96,7 @@ Cookie-файлы необязательны. Для каждой платфор
 Создай директорию под данные:
 
 ```bash
-mkdir -p /srv/apps/videodownloader/shared
+mkdir -p /srv/apps/videodownloader/shared/cookies
 ```
 
 ## 5) Проверка backend вручную
@@ -107,7 +111,7 @@ uvicorn app:app --host 127.0.0.1 --port 8000
 
 ```text
 http://127.0.0.1:8000/docs
-POST http://127.0.0.1:8000/api/youtube/info с JSON `{"url":"<youtube_url>"}`
+POST http://127.0.0.1:8000/api/media/info с JSON `{"url":"<video_url>"}`
 ```
 
 ## 6) `systemd` сервис backend
@@ -221,7 +225,7 @@ sudo certbot --nginx -d videoloader.a4dev.online
 
 ```text
 https://videoloader.a4dev.online
-POST https://videoloader.a4dev.online/api/youtube/info с JSON `{"url":"<youtube_url>"}`
+POST https://videoloader.a4dev.online/api/media/info с JSON `{"url":"<video_url>"}`
 ```
 
 ## 10) Повторный деплой (обновление)
@@ -247,7 +251,7 @@ sudo systemctl reload nginx
 
 ```bash
 systemctl is-active videodownloader-backend
-curl -sS -X POST "http://127.0.0.1:8000/api/youtube/info" -H "Content-Type: application/json" -d '{"url":"https://www.youtube.com/watch?v=dQw4w9WgXcQ"}' | head -c 300
+curl -sS -X POST "http://127.0.0.1:8000/api/media/info" -H "Content-Type: application/json" -d '{"url":"https://www.youtube.com/watch?v=dQw4w9WgXcQ"}' | head -c 300
 ```
 
 ## 11) Быстрый troubleshooting
@@ -257,6 +261,9 @@ curl -sS -X POST "http://127.0.0.1:8000/api/youtube/info" -H "Content-Type: appl
 - `HTTP 502` от nginx:
   Проверь `systemctl status videodownloader-backend` и `journalctl -u videodownloader-backend -f`.
 - Только один формат в `/info`:
-  Проверь `player_client` в `back/services/youtube_service.py`.
+  Проверь настройки и версию `yt-dlp` в `back/services/ytdlp_service.py`.
+- TikTok не отдаёт метаданные:
+  Убедись, что зависимости установлены из `back/requirements.txt`: TikTok использует
+  `curl-cffi` для имитации браузера, и cookies не заменяют этот пакет.
 - Зависания на YouTube:
   Используй IPv4 в `yt-dlp` (`source_address: "0.0.0.0"` в Python API).

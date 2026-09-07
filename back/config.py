@@ -16,12 +16,12 @@ def resolve_optional_path(path):
 class Settings(BaseSettings):
     database_name: str = "stats.db"
     ffmpeg_path: Path = BASE_DIR / "bin" / "ffmpeg.exe"
-    youtube_cookies_file: Path | None = BASE_DIR / "youtube_cookies.txt"
-    rutube_cookies_file: Path | None = None
-    vk_cookies_file: Path | None = None
-    twitter_cookies_file: Path | None = None
-    tiktok_cookies_file: Path | None = None
-    instagram_cookies_file: Path | None = None
+    youtube_cookies_file: Path | None = BASE_DIR / "cookies" / "youtube.txt"
+    rutube_cookies_file: Path | None = BASE_DIR / "cookies" / "rutube.txt"
+    vk_cookies_file: Path | None = BASE_DIR / "cookies" / "vk.txt"
+    twitter_cookies_file: Path | None = BASE_DIR / "cookies" / "twitter.txt"
+    tiktok_cookies_file: Path | None = BASE_DIR / "cookies" / "tiktok.txt"
+    instagram_cookies_file: Path | None = BASE_DIR / "cookies" / "instagram.txt"
     ytdlp_po_token: str | None = None
     enable_docs: bool = False
 

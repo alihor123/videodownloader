@@ -4,7 +4,7 @@ import json
 import tempfile
 from pathlib import Path
 
-from services import media_download_task_service as manager
+from services import media_tasks as manager
 
 
 EXAMPLES = {

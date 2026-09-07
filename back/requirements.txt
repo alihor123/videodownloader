@@ -13,6 +13,6 @@ starlette==1.0.0
 typing-inspection==0.4.2
 typing_extensions==4.15.0
 uvicorn==0.46.0
-yt-dlp==2026.8.19
-curl-cffi==0.16.0
+# Extra ставит curl-cffi: TikTok использует его для browser impersonation.
+yt-dlp[default,curl-cffi]==2026.8.19
 aiosqlite==0.21.0
