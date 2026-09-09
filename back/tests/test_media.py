@@ -481,10 +481,8 @@ class CancellationTest(unittest.IsolatedAsyncioTestCase):
             await asyncio.wait_for(task.runner, 5)
         self.assertEqual(task.status, "ready")
 
-    async def test_api_cancel_before_post_and_platforms(self):
+    async def test_api_cancel_before_post(self):
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
-            platforms = await client.get("/api/media/platforms")
-            self.assertEqual(len(platforms.json()), 6)
             task_id = str(uuid4())
             result = await client.delete(f"/api/media/download-tasks/{task_id}")
             self.assertEqual(result.json()["status"], "cancelled")

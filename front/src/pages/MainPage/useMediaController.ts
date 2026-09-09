@@ -1,12 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
 import { Api, ApiAbortError, ApiError } from '../../services/api'
-import type { MediaFormat, MediaInfo, MediaTask, Operation, Platform } from '../../services/media.types'
+import type { MediaFormat, MediaInfo, MediaTask, Operation } from '../../services/media.types'
 import {
   cancelDownloadTask,
   createDownloadTask,
   getDownloadTask,
-  getPlatforms,
   getVideoInfo,
   triggerDownload,
   waitForPoll,
@@ -30,15 +29,11 @@ export function useMediaController() {
   const [isDownloading, setIsDownloading] = useState(false)
   const [infoError, setInfoError] = useState<string | null>(null)
   const [downloadError, setDownloadError] = useState<string | null>(null)
-  const [platforms, setPlatforms] = useState<Platform[]>([])
   const [isCancelling, setIsCancelling] = useState(false)
   // UUID известен до POST: отмена сможет найти задачу, даже если ответ ещё не пришёл.
   const operationRef = useRef<Operation | null>(null)
 
   useEffect(() => {
-    const controller = new AbortController()
-    void getPlatforms(controller.signal).then(setPlatforms).catch(() => undefined)
-
     const stop = () => {
       const operation = operationRef.current
       if (!operation) return
@@ -48,7 +43,6 @@ export function useMediaController() {
     // При закрытии вкладки серверу всё равно нужно остановить дочерний процесс.
     window.addEventListener('pagehide', stop)
     return () => {
-      controller.abort()
       window.removeEventListener('pagehide', stop)
       stop()
     }
@@ -205,7 +199,7 @@ export function useMediaController() {
 
   return {
     searchQuery, setSearchQuery, selectedFormat, setSelectedFormat, videoData, downloadTask,
-    isLoading, isDownloadRunning, isDownloadBusy, isCancelling, infoError, downloadError, platforms,
+    isLoading, isDownloadRunning, isDownloadBusy, isCancelling, infoError, downloadError,
     fetchVideo, downloadCurrentVideo, cancelDownloadFlow, resetSearch,
   }
 }

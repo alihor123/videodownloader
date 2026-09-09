@@ -1,5 +1,5 @@
 import { Api } from './api'
-import type { MediaFormat, MediaInfo, MediaTask, Platform } from './media.types'
+import type { MediaFormat, MediaInfo, MediaTask } from './media.types'
 
 export const DOWNLOAD_TASK_POLL_INTERVAL_MS = 1_000
 
@@ -36,11 +36,6 @@ export async function createDownloadTask(
 export async function getDownloadTask(taskId: string, signal: AbortSignal): Promise<MediaTask> {
   const response = await Api.fetchGet(`/media/download-tasks/${taskId}`, signal)
   return response.json() as Promise<MediaTask>
-}
-
-export async function getPlatforms(signal: AbortSignal): Promise<Platform[]> {
-  const response = await Api.fetchGet('/media/platforms', signal)
-  return response.json() as Promise<Platform[]>
 }
 
 export function waitForPoll(signal: AbortSignal): Promise<void> {

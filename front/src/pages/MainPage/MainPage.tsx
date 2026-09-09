@@ -35,7 +35,6 @@ export default function MainPage() {
     isCancelling,
     infoError,
     downloadError,
-    platforms,
     fetchVideo,
     downloadCurrentVideo,
     cancelDownloadFlow,
@@ -197,7 +196,7 @@ export default function MainPage() {
               </div>
             </>
           )}
-          {!videoData && <ServiceGuide platforms={platforms} />}
+          {!videoData && <ServiceGuide />}
         </div>
       </div>
     </main>

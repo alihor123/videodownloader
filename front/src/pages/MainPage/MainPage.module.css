@@ -843,6 +843,21 @@ button:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
     .platforms { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
+@media (max-width: 600px) {
+    .videoInfo {
+        display: block;
+    }
+
+    .videoThumbnail {
+        display: block;
+        width: auto;
+        height: auto;
+        max-width: 160px;
+        max-height: 90px;
+        margin-bottom: 10px;
+    }
+}
+
 @media (max-width: 520px) {
     .guide { padding: 18px 14px 20px; }
     .stepArrow { margin: 0; }

@@ -21,6 +21,15 @@ const platformIcons: Partial<Record<PlatformId, string>> = {
   instagram: instagramIcon,
 }
 
+const SUPPORTED_PLATFORMS: Platform[] = [
+  { id: 'youtube', name: 'YouTube' },
+  { id: 'rutube', name: 'Rutube' },
+  { id: 'vk', name: 'VK Видео' },
+  { id: 'twitter', name: 'X / Twitter' },
+  { id: 'tiktok', name: 'TikTok' },
+  { id: 'instagram', name: 'Instagram' },
+]
+
 export function PlatformIcon({ platform }: { platform: PlatformId }) {
   const svg = platformIcons[platform]
   return svg ? (
@@ -61,7 +70,7 @@ function StepArrow() {
   )
 }
 
-export default function ServiceGuide({ platforms }: { platforms: Platform[] }) {
+export default function ServiceGuide() {
   return (
     <section className={styles.guide} aria-label="Как скачать видео">
       <div className={styles.guideHeader}>
@@ -84,12 +93,9 @@ export default function ServiceGuide({ platforms }: { platforms: Platform[] }) {
         <h2>Доступные платформы</h2>
       </div>
       <div className={styles.platforms} aria-label="Поддерживаемые платформы">
-        {platforms.map((platform) => (
+        {SUPPORTED_PLATFORMS.map((platform) => (
           <PlatformBadge key={platform.id} platform={platform} />
         ))}
-        {!platforms.length && (
-          <p className={styles.guideNote}>Список платформ появится после подключения к серверу.</p>
-        )}
       </div>
       <p className={styles.guideNote}>Доступность зависит от платформы; временами отдельные ссылки могут работать нестабильно.</p>
     </section>

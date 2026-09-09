@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 
 from config import settings
 from database.db_tools import add_download_stat
-from services.media_platforms import PLATFORMS, detect_platform
+from services.media_platforms import detect_platform
 from services.media_tasks import (
     cancel_task, cleanup_directory, create_task, get_task, serialize_task,
 )
@@ -46,11 +46,6 @@ def validate_url(url):
         return detect_platform(url)
     except ValueError as error:
         raise HTTPException(400, str(error))
-
-
-@media_router.get("/platforms")
-async def platforms():
-    return PLATFORMS
 
 
 @media_router.post("/info")
