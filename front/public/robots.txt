@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://videoloader.a4dev.online/sitemap.xml
+Sitemap: https://a4dev.ru/sitemap.xml
