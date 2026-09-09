@@ -10,10 +10,12 @@ import httpx
 from config import settings
 from services.media_platforms import detect_platform, normalize_platform_url
 from services.media_formats import (
-    build_format_list, format_duration, format_views, get_output_ext, get_safe_title,
+    build_format_list, format_duration, format_views, get_fast_format_heights, get_output_ext, get_safe_title,
     select_fast_format,
 )
-from services.ytdlp_service import extract_info, get_download_ydl_opts, get_info_ydl_opts
+from services.ytdlp_service import (
+    extract_info, get_download_ydl_opts, get_info_ydl_opts, get_youtube_fast_info_ydl_opts,
+)
 
 platform_id = None
 
@@ -78,8 +80,12 @@ def get_platform_cookie_file(platform_id):
 
 def should_retry_without_youtube_cookies(error, platform_id, cookie_file):
     """Протухшая YouTube-сессия не должна ломать публичные ролики."""
+    session_errors = (
+        "page needs to be reloaded",
+        "requested format is not available",
+    )
     return (platform_id == "youtube" and cookie_file and
-            "page needs to be reloaded" in str(error).lower())
+            any(message in str(error).lower() for message in session_errors))
 
 
 def get_fast_headers(format_data):
@@ -124,7 +130,9 @@ def main():
             progress = min(98, round(98 * data.get("downloaded_bytes", 0) / total)) if total else None
             emit("progress", stage="downloading_file", progress=progress)
 
-    if payload["mode"] in {"info", "fast"}:
+    if payload["mode"] == "fast" and platform["id"] == "youtube":
+        opts = get_youtube_fast_info_ydl_opts()
+    elif payload["mode"] in {"info", "fast"}:
         opts = get_info_ydl_opts()
     else:
         kind = payload.get("kind", "video")
@@ -144,7 +152,7 @@ def main():
         for key in ("cookiefile", "extractor_args", "remote_components", "js_runtimes"):
             opts.pop(key, None)
     cookie_file = get_platform_cookie_file(platform["id"])
-    if cookie_file:
+    if cookie_file and not (platform["id"] == "youtube" and payload["mode"] == "fast"):
         # CookieJar сохраняет файл при закрытии: используем копию задачи для любой платформы.
         import shutil
         cookie_copy = Path(payload["directory"]) / "cookies.txt"
@@ -178,7 +186,18 @@ def main():
     if not info or info.get("_type") in {"playlist", "multi_video"} or info.get("is_live"):
         raise ValueError("Нужна ссылка на отдельное опубликованное видео")
     if payload["mode"] == "info":
-        formats = build_format_list(info)
+        fast_heights = ()
+        if platform["id"] == "youtube":
+            try:
+                fast_opts = get_youtube_fast_info_ydl_opts()
+                fast_opts.update({"logger": Logger(), "quiet": True, "noprogress": True,
+                                  "noplaylist": True, "cachedir": False, "playlistend": 1,
+                                  "allowed_extractors": ["youtube"], "match_filter": reject_live})
+                fast_heights = get_fast_format_heights(extract_info(source_url, fast_opts))
+            except DownloadError:
+                # Fast — необязательное ускорение: список обычных качеств остаётся доступен.
+                pass
+        formats = build_format_list(info, fast_heights)
         if not formats:
             raise ValueError("Нет доступных форматов для скачивания")
         # Все загрузки проходят через управляемый worker, включая цельные MP4.

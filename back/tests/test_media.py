@@ -98,6 +98,11 @@ class PlatformsTest(unittest.TestCase):
         self.assertEqual(formats[0]["height"], 720)
         self.assertTrue(formats[0]["fast"])
 
+    def test_extra_fast_quality_marks_split_format_as_fast(self):
+        info = {"formats": [{"height": 360, "vcodec": "avc1", "acodec": "none", "ext": "mp4"}]}
+        formats = build_format_list(info, extra_fast_heights={360})
+        self.assertTrue(formats[0]["fast"])
+
     def test_fast_selector_requires_exact_height(self):
         info = {"formats": [{"height": 720, "vcodec": "avc", "acodec": "mp4a",
                              "ext": "mp4", "url": "https://cdn/video.mp4"}]}
@@ -194,6 +199,8 @@ class PlatformsTest(unittest.TestCase):
         cookie_file = Path("youtube.txt")
         error = Exception("The page needs to be reloaded")
         self.assertTrue(should_retry_without_youtube_cookies(error, "youtube", cookie_file))
+        unavailable_error = Exception("Requested format is not available")
+        self.assertTrue(should_retry_without_youtube_cookies(unavailable_error, "youtube", cookie_file))
         self.assertFalse(should_retry_without_youtube_cookies(error, "instagram", cookie_file))
         self.assertFalse(should_retry_without_youtube_cookies(error, "youtube", None))
 

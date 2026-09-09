@@ -9,6 +9,7 @@ from services.media_formats import (
 )
 
 
+# Android-клиент чаще отдаёт цельный 360p MP4, пригодный для fast-скачивания.
 YOUTUBE_EXTRACTOR_ARGS = {"youtube": {}}
 if settings.ytdlp_po_token:
     YOUTUBE_EXTRACTOR_ARGS["youtube"]["po_token"] = [f"web+{settings.ytdlp_po_token}"]
@@ -29,6 +30,11 @@ if YOUTUBE_EXTRACTOR_ARGS["youtube"]:
 
 def get_info_ydl_opts():
     return YDL_COMMON_OPTS.copy()
+
+
+def get_youtube_fast_info_ydl_opts():
+    """Android-клиент чаще отдаёт цельный MP4, пригодный для fast-скачивания."""
+    return {**YDL_COMMON_OPTS, "extractor_args": {"youtube": {"player_client": ["android"]}}}
 
 
 def get_download_ydl_opts(height, file_ext, download_path, progress_hook, kind="video"):

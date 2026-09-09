@@ -31,6 +31,12 @@ def is_fast_direct_format(format_data):
             format_data.get("protocol") in {None, "http", "https"})
 
 
+def get_fast_format_heights(info):
+    """Высоты форматов, которые можно передать браузеру без ffmpeg."""
+    return {item["height"] for item in info.get("formats", [])
+            if item.get("height") and is_fast_direct_format(item)}
+
+
 def select_fast_format(info, height):
     """Select a directly downloadable muxed format for the requested height.
 
@@ -151,9 +157,9 @@ def get_download_format(height, kind="video"):
     )
 
 
-def build_format_list(info):
+def build_format_list(info, extra_fast_heights=()):
     video_by_quality = {}
-    fast_by_height = set()
+    fast_by_height = get_fast_format_heights(info) | set(extra_fast_heights)
     audio_by_quality = {}
     max_audio_size = 0
 
@@ -163,8 +169,6 @@ def build_format_list(info):
             display_height = get_display_height(format_data)
             if not selector_height or not display_height:
                 continue
-            if is_fast_direct_format(format_data):
-                fast_by_height.add(selector_height)
             # Выбираем один лучший поток на видимое качество: 540p не должен стать вторым 720p.
             previous = video_by_quality.get(display_height)
             if previous is None or (get_filesize(format_data), format_data.get("tbr") or 0) > (
