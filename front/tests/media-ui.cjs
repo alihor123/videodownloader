@@ -32,12 +32,14 @@ async function main() {
   // Детерминированный API проверяет гонку POST/DELETE независимо от внешних сайтов.
   const tasks = new Map()
   const cancellations = []
+  let downloadCreates = 0
   let infoStatusRequests = 0
   let delayCreate = true
+  let sendNextDownload = false
   const info = { title: 'Проверочное видео', uploader: 'Автор', duration: '0:12', views: '100',
     thumbnail: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="160" height="90"><rect width="160" height="90" fill="%23df102c"/></svg>',
     platform: 'vk', platform_name: 'VK Видео', url: 'https://vk.com/video-1_2',
-    formats: [{ height: 720, label: '720p', ext: 'mp4', size: '~2 MB', fast: false }] }
+    formats: [{ height: 720, kind: 'video', label: '720p', ext: 'mp4', size: '~2 MB', fast: false }] }
   await page.unroute('**/api/**')
   await page.route('**/api/**', async route => {
     const request = route.request()
@@ -51,15 +53,29 @@ async function main() {
     if (request.method() === 'POST') {
       const body = request.postDataJSON()
       if (delayCreate) await new Promise(resolve => setTimeout(resolve, 1000))
+      if (!path.endsWith('/info')) downloadCreates += 1
       const task = tasks.get(body.task_id) || {
-        task_id: body.task_id, status: path.endsWith('/info') ? 'ready' : 'running',
+        task_id: body.task_id,
+        status: path.endsWith('/info') ? 'ready' : sendNextDownload ? 'ready' : 'running',
         result: path.endsWith('/info') ? info : null, stage: 'downloading_file', message: 'Скачиваем файл', progress: 50,
+        download_url: !path.endsWith('/info') && sendNextDownload ? `/api/media/download-tasks/${body.task_id}/download` : null,
       }
+      if (!path.endsWith('/info')) sendNextDownload = false
       tasks.set(body.task_id, task)
       return route.fulfill({ json: path.endsWith('/info') ? info : task })
     }
+    if (request.method() === 'GET' && path.endsWith('/download')) {
+      const id = path.split('/').at(-2)
+      const task = tasks.get(id)
+      task.status = 'sending'
+      tasks.set(id, task)
+      return route.fulfill({ status: 200, body: 'test file' })
+    }
     if (path.includes('/download-tasks/')) infoStatusRequests += 1
-    return route.fulfill({ json: tasks.get(path.split('/').at(-1)) })
+    const id = path.split('/').at(-1)
+    const task = tasks.get(id)
+    if (task?.status === 'ready' && task.download_url) task.status = 'sending'
+    return route.fulfill({ json: task })
   })
   await page.getByRole('textbox').fill(info.url)
   await page.getByRole('button', { name: 'Найти', exact: true }).click()
@@ -106,6 +122,23 @@ async function main() {
   assert.equal(await page.getByRole('textbox').inputValue(), '')
   assert.equal(await page.getByText(info.title, { exact: true }).count(), 0)
   console.log('PASS: clear button resets the result and restores instructions')
+
+  sendNextDownload = true
+  await page.getByRole('textbox').fill(info.url)
+  await page.getByRole('button', { name: 'Найти', exact: true }).click()
+  await page.getByText(info.title, { exact: true }).waitFor()
+  const createsBeforeTransfer = downloadCreates
+  const cancellationsBeforeTransfer = cancellations.length
+  await page.getByRole('button', { name: 'Скачать', exact: true }).click()
+  await page.getByRole('button', { name: 'Скачать', exact: true }).waitFor()
+  assert.equal(cancellations.length, cancellationsBeforeTransfer)
+  assert.equal(downloadCreates, createsBeforeTransfer + 1)
+  console.log('PASS: sending releases the frontend operation without cancellation')
+
+  await page.getByRole('button', { name: 'Скачать', exact: true }).click()
+  await page.getByText('Скачиваем файл...', { exact: true }).waitFor()
+  assert.equal(downloadCreates, createsBeforeTransfer + 2)
+  console.log('PASS: download can be started again after sending')
   assert.deepEqual(errors, [])
   console.log('PASS: desktop/mobile/dark layout; no horizontal overflow or JS errors')
   await browser.close()

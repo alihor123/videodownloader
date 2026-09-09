@@ -14,8 +14,6 @@ app = FastAPI(
 api_router = APIRouter(prefix="/api") #Главный роут
 
 api_router.include_router(media_router, prefix="/media", tags=["Media"])
-# Старые клиенты используют тот же менеджер задач и ту же серверную отмену.
-api_router.include_router(media_router, prefix="/youtube", tags=["YouTube"], include_in_schema=False)
 
 app.include_router(api_router) #Подключение к главному роуту
 

@@ -1,13 +1,17 @@
 """Один процесс на операцию. Общение с backend — JSON-строки через stdin/stdout."""
 import json
+import mimetypes
 import sys
 import time
 from pathlib import Path
+
+import httpx
 
 from config import settings
 from services.media_platforms import detect_platform, normalize_platform_url
 from services.media_formats import (
     build_format_list, format_duration, format_views, get_output_ext, get_safe_title,
+    select_fast_format,
 )
 from services.ytdlp_service import extract_info, get_download_ydl_opts, get_info_ydl_opts
 
@@ -45,6 +49,9 @@ def get_user_error(error, platform_id):
     )):
         return ("Instagram не отдаёт это видео всем зрителям. Оно может быть ограничено "
                 "по возрасту или настройкам публикации — сервис скачивает только публично доступные видео")
+    if platform_id == "instagram" and "нужна ссылка на отдельное" in reason:
+        return ("Instagram-карусели и публикации с несколькими материалами пока не поддерживаются. "
+                "Укажите ссылку на отдельный Reel или видеопост")
     if any(word in reason for word in ("login", "sign in", "log in", "authentication")):
         return ("Платформа не отдаёт это видео как публичное. Проверьте, что оно открывается "
                 "без ограничений, и попробуйте другую ссылку")
@@ -69,6 +76,28 @@ def get_platform_cookie_file(platform_id):
     return cookie_file if cookie_file and cookie_file.is_file() else None
 
 
+def get_fast_headers(format_data):
+    """Return only headers needed by the upstream proxy, never extractor data."""
+    allowed = {"user-agent", "referer", "origin", "accept", "accept-language"}
+    source_headers = format_data.get("http_headers") or {}
+    return {key: value for key, value in source_headers.items()
+            if key.lower() in allowed and value}
+
+
+def probe_fast_source(url, headers):
+    """Check that the direct source is still usable without downloading it."""
+    request_headers = dict(headers or {})
+    request_headers["Range"] = "bytes=0-0"
+    timeout = httpx.Timeout(8.0)
+    try:
+        with httpx.Client(follow_redirects=True, timeout=timeout) as client:
+            with client.stream("GET", url, headers=request_headers) as response:
+                response.raise_for_status()
+                return bool(next(response.iter_bytes(64 * 1024), b""))
+    except (httpx.HTTPError, OSError):
+        return False
+
+
 def main():
     # Backend сначала закрепляет процесс в группе/Job, затем разрешает работу.
     global platform_id
@@ -89,12 +118,15 @@ def main():
             progress = min(98, round(98 * data.get("downloaded_bytes", 0) / total)) if total else None
             emit("progress", stage="downloading_file", progress=progress)
 
-    if payload["mode"] == "info":
+    if payload["mode"] in {"info", "fast"}:
         opts = get_info_ydl_opts()
     else:
-        ext = get_output_ext(payload["height"])
+        kind = payload.get("kind", "video")
+        if kind not in {"video", "audio"}:
+            raise ValueError("Некорректный тип медиаформата")
+        ext = get_output_ext(payload["height"], kind)
         opts = get_download_ydl_opts(payload["height"], ext,
-                                     str(Path(payload["directory"]) / "output.%(ext)s"), progress_hook)
+                                     str(Path(payload["directory"]) / "output.%(ext)s"), progress_hook, kind)
         if ext == "mp4":
             # При fallback на WebM UI всё равно обещает MP4: меняем контейнер.
             opts.setdefault("postprocessors", []).append({"key": "FFmpegVideoRemuxer", "preferedformat": "mp4"})
@@ -140,14 +172,33 @@ def main():
         if not formats:
             raise ValueError("Нет доступных форматов для скачивания")
         # Все загрузки проходят через управляемый worker, включая цельные MP4.
-        for item in formats:
-            item["fast"] = False
         view_count = info.get("view_count")
         emit("result", data={"title": info.get("title", "Видео"), "thumbnail": info.get("thumbnail"),
                              "uploader": info.get("uploader") or "Неизвестный автор",
                              "duration": format_duration(info.get("duration", 0)),
                              "views": format_views(view_count) if view_count is not None else None,
                              "formats": formats, "platform": platform["id"], "platform_name": platform["name"], "url": payload["url"]})
+    elif payload["mode"] == "fast":
+        media_format = select_fast_format(info, payload["height"])
+        if media_format is None:
+            emit("fallback", reason="Источник не отдал цельный видеоформат")
+            raise ValueError("Источник не отдал цельный видеоформат")
+        ext = media_format.get("ext") or "mp4"
+        title = get_safe_title(info)
+        headers = get_fast_headers(media_format)
+        if not probe_fast_source(media_format["url"], headers):
+            emit("fallback", reason="Прямой поток недоступен")
+            raise ValueError("Прямой поток недоступен")
+        emit("result", data={
+            "delivery_mode": "fast",
+            "url": media_format["url"],
+            "headers": headers,
+            "filename": f"{title}.{ext}",
+            "media_type": mimetypes.guess_type(f"video.{ext}")[0] or "application/octet-stream",
+            "title": title,
+            "height": media_format.get("height"),
+            "ext": ext,
+        })
     else:
         directory = Path(payload["directory"])
         candidates = list(directory.glob("output.*"))

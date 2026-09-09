@@ -25,7 +25,7 @@ export async function createDownloadTask(
 ): Promise<MediaTask> {
   const response = await Api.fetchPost(
     '/media/download-tasks',
-    { url, task_id: taskId, format: { height: format.height, fast: format.fast } },
+    { url, task_id: taskId, format: { height: format.height, kind: format.kind, fast: format.fast } },
     { 429: 'Вы сделали слишком много запросов. Попробуйте чуть позже.' },
     signal,
     true,

@@ -28,6 +28,9 @@ class MediaTask:
     id: str
     url: str = ""
     mode: str = "download"
+    requested_fast: bool = False
+    delivery_mode: str = "file"
+    format_kind: str = "video"
     height: str = "720"
     platform: str = ""
     status: str = "queued"
@@ -44,6 +47,8 @@ class MediaTask:
     transfer_done: asyncio.Event = field(default_factory=asyncio.Event)
     ip: str = "unknown"
     user_agent: str | None = None
+    queue_name: str = "file"
+    fallback_requested: bool = False
 
     @property
     def directory(self):
@@ -51,6 +56,8 @@ class MediaTask:
 
 
 TASKS: dict[str, MediaTask] = {}
+QUEUES: dict[str, asyncio.Queue] = {}
+WORKERS: list[asyncio.Task] = []
 
 
 def normalize_id(task_id):
@@ -87,7 +94,10 @@ def serialize_task(task):
     data = {"task_id": task.id, "status": task.status, "stage": task.stage,
             "message": task.error or get_stage_message(task.stage), "progress": task.progress,
             "error": task.error, "error_code": 500 if task.status == "failed" else None,
-            "platform": task.platform, "download_url": None}
+            "platform": task.platform, "download_url": None,
+            "delivery_mode": task.delivery_mode, "queue": task.queue_name}
+    if task.status == "queued":
+        data["queue_position"] = queue_position(task)
     if task.status == "ready" and task.mode == "download":
         data["download_url"] = f"/api/media/download-tasks/{task.id}/download"
     if task.status == "ready" and task.mode == "info":
@@ -95,7 +105,44 @@ def serialize_task(task):
     return data
 
 
-def create_task(url, height="720", mode="download", task_id=None):
+def queue_position(task):
+    # Очередь живёт только в одном event loop; _queue читается без await.
+    queue = QUEUES.get(task.queue_name)
+    if queue is None:
+        return None
+    queued_position = None
+    for position, item in enumerate(queue._queue, 1):
+        if item is task:
+            queued_position = position
+            break
+    if queued_position is None:
+        return None
+    worker_count = {
+        "info": settings.info_worker_count,
+        "fast": settings.fast_worker_count,
+        "file": settings.file_worker_count,
+    }.get(task.queue_name, 0)
+    occupied = sum(
+        item.queue_name == task.queue_name and item.status in {"running", "cancelling"}
+        for item in TASKS.values()
+    )
+    position = occupied + queued_position - worker_count
+    return position if position > 0 else None
+
+
+def ensure_queues():
+    if QUEUES:
+        return
+    QUEUES.update({
+        "info": asyncio.Queue(maxsize=settings.info_queue_size),
+        "fast": asyncio.Queue(maxsize=settings.fast_queue_size),
+        "file": asyncio.Queue(maxsize=settings.file_queue_size),
+    })
+
+
+def create_task(url, height="720", mode="download", task_id=None, *, requested_fast=False,
+                ip="unknown", user_agent=None, kind="video"):
+    ensure_queues()
     platform = detect_platform(url)
     task_id = normalize_id(task_id or uuid4())
     if task_id in TASKS:
@@ -104,14 +151,27 @@ def create_task(url, height="720", mode="download", task_id=None):
         if previous.cancel.is_set():
             return previous
         raise HTTPException(409, "Этот идентификатор задачи уже используется")
-    active = sum(task.status not in TERMINAL and task.status != "ready" for task in TASKS.values())
-    if active >= settings.max_active_file_tasks:
+    active = sum(task.status not in TERMINAL for task in TASKS.values())
+    if active >= settings.max_queue_total:
         raise HTTPException(503, "Сервер уже занят, попробуйте чуть позже")
+    ip_active = sum(task.status not in TERMINAL and task.ip == ip for task in TASKS.values())
+    if ip_active >= settings.max_queue_per_ip:
+        raise HTTPException(429, "Too many tasks from this IP")
     if len(TASKS) >= settings.max_retained_media_tasks:
         raise HTTPException(503, "Слишком много задач, попробуйте чуть позже")
-    task = MediaTask(task_id, url=url, height=str(height), mode=mode, platform=platform["id"])
+    queue_name = "info" if mode == "info" else ("fast" if requested_fast else "file")
+    task = MediaTask(task_id, url=url, height=str(height), mode=mode,
+                     requested_fast=requested_fast,
+                     delivery_mode="fast" if requested_fast else "file",
+                     format_kind=kind,
+                     platform=platform["id"], ip=ip, user_agent=user_agent,
+                     queue_name=queue_name)
     TASKS[task.id] = task
-    task.runner = asyncio.create_task(run_task(task), name=f"media-{task.id}")
+    try:
+        QUEUES[queue_name].put_nowait(task)
+    except asyncio.QueueFull:
+        TASKS.pop(task.id, None)
+        raise HTTPException(503, "Queue is full")
     return task
 
 
@@ -131,6 +191,14 @@ async def cancel_task(task_id):
         TASKS.pop(task.id, None)
         return task
     task.cancel.set()
+    if task.status == "queued" and task.runner is None:
+        queue = QUEUES.get(task.queue_name)
+        if queue is not None:
+            try:
+                queue._queue.remove(task)
+                queue.task_done()
+            except ValueError:
+                pass
     task.status = task.stage = "cancelling"
     # Ответ DELETE означает, что worker и его потомки уже завершены.
     if task.runner:
@@ -155,6 +223,8 @@ async def read_events(process, task):
         if event.get("event") == "progress" and not task.cancel.is_set():
             task.stage = event["stage"]
             task.progress = event.get("progress")
+        elif event.get("event") == "fallback":
+            task.fallback_requested = True
         elif event.get("event") == "result":
             result = event["data"]
         elif event.get("event") == "error":
@@ -171,10 +241,45 @@ async def drain_errors(process, task):
         logger.warning("Media worker %s: %s", task.id, line.decode("utf-8", errors="replace").rstrip()[:2000])
 
 
+async def queue_worker(queue_name):
+    queue = QUEUES[queue_name]
+    while True:
+        task = await queue.get()
+        requeue = False
+        try:
+            if task.cancel.is_set() or task.status != "queued":
+                continue
+            task.status = task.stage = "running"
+            task.runner = asyncio.create_task(run_task(task), name=f"media-{task.id}")
+            await task.runner
+            if task.fallback_requested and not task.cancel.is_set():
+                task.fallback_requested = False
+                requeue = True
+        except asyncio.QueueFull:
+            task.status = task.stage = "failed"
+            task.error = "Очередь переполнена"
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Media queue worker %s failed for %s", queue_name, task.id)
+            if task.status not in TERMINAL:
+                task.status = task.stage = "failed"
+        finally:
+            queue.task_done()
+            task.runner = None
+        if requeue:
+            try:
+                QUEUES["file"].put_nowait(task)
+            except asyncio.QueueFull:
+                task.status = task.stage = "failed"
+                task.error = "Очередь переполнена"
+
+
 async def run_task(task):
     process = job = None
     readers = []
     succeeded = False
+    rescheduled = False
     try:
         if task.cancel.is_set():
             return
@@ -191,7 +296,9 @@ async def run_task(task):
         )
         if os.name == "nt":
             job = WindowsJob(process.pid)
-        payload = {"url": task.url, "mode": task.mode, "height": task.height,
+        payload = {"url": task.url,
+                   "mode": "fast" if task.requested_fast else task.mode,
+                   "height": task.height, "kind": task.format_kind,
                    "directory": str(task.directory), "max_bytes": settings.media_max_bytes}
         process.stdin.write((json.dumps(payload) + "\n").encode())
         await process.stdin.drain()
@@ -207,7 +314,7 @@ async def run_task(task):
         if output not in done:
             raise TimeoutError("Превышено время обработки видео")
         task.result = output.result()
-        if task.mode == "download":
+        if task.mode == "download" and task.delivery_mode != "fast":
             path = task.directory / task.result["filename"]
             if path.resolve().parent != task.directory.resolve() or not path.is_file():
                 raise RuntimeError("Готовый файл не найден")
@@ -215,8 +322,15 @@ async def run_task(task):
         # Иначе HTTP-ответ мог бы начать читать файл одновременно с очисткой.
         succeeded = True
     except Exception as error:
-        logger.warning("Media task %s failed: %s", task.id, error)
-        task.status = task.stage = "failed"
+        if task.fallback_requested and task.requested_fast and not task.cancel.is_set():
+            task.requested_fast = False
+            task.delivery_mode = task.queue_name = "file"
+            task.status = task.stage = "queued"
+            task.error = None
+            rescheduled = True
+        else:
+            logger.warning("Media task %s failed: %s", task.id, error)
+            task.status = task.stage = "failed"
         task.error = str(error) if isinstance(error, (RuntimeError, TimeoutError)) else "Не удалось обработать видео"
     finally:
         # Сначала останавливаем дерево, затем закрываем читателей и удаляем файлы.
@@ -232,8 +346,15 @@ async def run_task(task):
             task.status = task.stage = "ready"
             task.progress = 100
             task.ready_at = time.monotonic()
-        if task.status != "ready" or task.mode == "info":
+        if task.status != "ready" or task.mode == "info" or task.delivery_mode == "fast":
             cleanup_directory(task)
+        elif task.directory.exists():
+            try:
+                (task.directory / "cookies.txt").unlink(missing_ok=True)
+            except OSError:
+                logger.warning("Cannot remove cookie copy for task %s", task.id)
+        if rescheduled:
+            task.error = None
 
 
 async def reap_tasks():
@@ -270,6 +391,18 @@ async def reap_tasks():
 
 async def start_tasks():
     TASK_ROOT.mkdir(parents=True, exist_ok=True)
+    QUEUES.clear()
+    QUEUES.update({
+        "info": asyncio.Queue(maxsize=settings.info_queue_size),
+        "fast": asyncio.Queue(maxsize=settings.fast_queue_size),
+        "file": asyncio.Queue(maxsize=settings.file_queue_size),
+    })
+    WORKERS.clear()
+    for name, count in (("info", settings.info_worker_count),
+                        ("fast", settings.fast_worker_count),
+                        ("file", settings.file_worker_count)):
+        WORKERS.extend(asyncio.create_task(queue_worker(name), name=f"media-{name}-{i}")
+                       for i in range(count))
     # Папка выделена только этому менеджеру. Старые файлы прежнего API не трогаем.
     for directory in TASK_ROOT.iterdir():
         try:
@@ -285,4 +418,8 @@ async def shutdown_tasks(reaper):
     reaper.cancel()
     await asyncio.gather(reaper, return_exceptions=True)
     await asyncio.gather(*(cancel_task(task.id) for task in list(TASKS.values())))
+    for worker in WORKERS:
+        worker.cancel()
+    await asyncio.gather(*WORKERS, return_exceptions=True)
+    WORKERS.clear()
     TASKS.clear()

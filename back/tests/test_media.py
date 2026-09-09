@@ -5,7 +5,7 @@ import signal
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 from uuid import uuid4
 
 import httpx
@@ -16,9 +16,9 @@ from config import BASE_DIR, settings
 from routers.media_router import InfoRequest, ManagedFileResponse, get_info
 from services import media_tasks as manager
 from services.media_platforms import detect_platform, normalize_platform_url
-from services.media_formats import build_format_list, format_duration, format_filesize
+from services.media_formats import build_format_list, format_duration, format_filesize, select_fast_format
 from services import process_tree
-from services.media_worker import get_platform_cookie_file, get_user_error
+from services.media_worker import get_platform_cookie_file, get_user_error, probe_fast_source
 
 
 async def wait_for_condition(condition, timeout):
@@ -74,6 +74,77 @@ class PlatformsTest(unittest.TestCase):
         self.assertEqual([item["height"] for item in formats], [1024, 1280, 1920])
         self.assertEqual([item["label"] for item in formats], ["540p", "720p", "1080p"])
 
+    def test_split_quality_is_fast_when_muxed_variant_exists(self):
+        formats = build_format_list({"formats": [
+            {"height": 720, "width": 1280, "vcodec": "avc", "acodec": "none",
+             "ext": "mp4", "filesize": 5000},
+            {"height": 720, "width": 1280, "vcodec": "avc", "acodec": "mp4a",
+             "ext": "mp4", "filesize": 1000, "url": "https://cdn/video.mp4"},
+        ]})
+        self.assertEqual(formats[0]["height"], 720)
+        self.assertTrue(formats[0]["fast"])
+
+    def test_fast_selector_requires_exact_height(self):
+        info = {"formats": [{"height": 720, "vcodec": "avc", "acodec": "mp4a",
+                             "ext": "mp4", "url": "https://cdn/video.mp4"}]}
+        self.assertIsNone(select_fast_format(info, 1080))
+
+    def test_fast_selector_prefers_mp4_for_exact_height(self):
+        info = {"formats": [
+            {"height": 720, "vcodec": "avc", "acodec": "opus", "ext": "webm",
+             "url": "https://cdn/video.webm", "tbr": 1000},
+            {"height": 720, "vcodec": "avc", "acodec": "mp4a", "ext": "mp4",
+             "url": "https://cdn/video.mp4", "tbr": 500},
+        ]}
+        self.assertEqual(select_fast_format(info, 720)["ext"], "mp4")
+
+    def test_fast_source_probe_reads_one_chunk(self):
+        response = Mock()
+        response.iter_bytes.return_value = iter([b"x", b"unread"])
+        response.raise_for_status = lambda: None
+
+        class Stream:
+            def __enter__(self):
+                return response
+            def __exit__(self, *_):
+                return False
+
+        class Client:
+            def __enter__(self):
+                return self
+            def __exit__(self, *_):
+                return False
+            def stream(self, method, url, headers):
+                self.request = (method, headers)
+                return Stream()
+
+        with patch("services.media_worker.httpx.Client", return_value=Client()) as factory:
+            self.assertTrue(probe_fast_source("https://cdn.example/video.mp4", {"User-Agent": "test"}))
+        self.assertEqual(factory.return_value.request[1]["Range"], "bytes=0-0")
+
+    def test_fast_source_probe_falls_back_on_http_error(self):
+        class Response:
+            def __enter__(self):
+                return self
+            def __exit__(self, *_):
+                return False
+            def raise_for_status(self):
+                import httpx
+                raise httpx.HTTPStatusError("forbidden", request=None, response=None)
+            def iter_bytes(self, _):
+                return iter(())
+
+        class Client:
+            def __enter__(self):
+                return self
+            def __exit__(self, *_):
+                return False
+            def stream(self, *_args, **_kwargs):
+                return Response()
+
+        with patch("services.media_worker.httpx.Client", return_value=Client()):
+            self.assertFalse(probe_fast_source("https://cdn.example/video.mp4", {}))
+
     def test_rutube_shorts_is_normalized_for_rutube_extractor(self):
         url = "https://rutube.ru/shorts/2f18c8153e2b589a2f895e81b400137e/"
         self.assertEqual(
@@ -87,6 +158,14 @@ class PlatformsTest(unittest.TestCase):
             "instagram",
         )
         self.assertIn("ограничено по возрасту", message)
+
+    def test_instagram_carousel_has_a_clear_message(self):
+        message = get_user_error(
+            ValueError("Нужна ссылка на отдельное опубликованное видео"),
+            "instagram",
+        )
+        self.assertIn("карусели", message)
+        self.assertIn("отдельный Reel", message)
 
     def test_each_platform_uses_only_its_own_cookie_file(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -133,11 +212,15 @@ class CancellationTest(unittest.IsolatedAsyncioTestCase):
 
         self.process_patch = patch.object(manager.asyncio, "create_subprocess_exec", fixture_process)
         self.process_patch.start()
+        manager.QUEUES.clear()
+        manager.WORKERS.clear()
+        self.reaper = await manager.start_tasks()
         self.child_pids = []
 
     async def asyncTearDown(self):
-        await asyncio.gather(*(manager.cancel_task(task.id) for task in list(manager.TASKS.values())))
+        await manager.shutdown_tasks(self.reaper)
         manager.TASKS.clear()
+        manager.QUEUES.clear()
         self.process_patch.stop()
         self.root_patch.stop()
         self.temp.cleanup()
@@ -146,7 +229,8 @@ class CancellationTest(unittest.IsolatedAsyncioTestCase):
 
     async def running_task(self, name="download", mode="download"):
         task = manager.create_task(f"https://youtube.com/watch?v={name}", mode=mode)
-        await wait_for_condition(lambda: (task.directory / "child.pid").exists() or task.runner.done(), 15)
+        await wait_for_condition(lambda: (task.directory / "child.pid").exists() or
+                                 (task.runner is not None and task.runner.done()), 15)
         # Ждём запись PID целиком.
         await wait_for_condition(lambda: bool((task.directory / "child.pid").read_text()), 15)
         content = (task.directory / "child.pid").read_text()
@@ -191,6 +275,7 @@ class CancellationTest(unittest.IsolatedAsyncioTestCase):
     async def test_info_disconnect_cancels_worker_tree(self):
         class DisconnectingRequest:
             disconnected = False
+            headers = {}
 
             async def is_disconnected(self):
                 return self.disconnected
@@ -224,7 +309,8 @@ class CancellationTest(unittest.IsolatedAsyncioTestCase):
     async def test_cancel_immediately_after_create(self):
         task = manager.create_task("https://youtu.be/a")
         await manager.cancel_task(task.id)
-        self.assertTrue(task.runner.done())
+        self.assertIsNone(task.runner)
+        self.assertEqual(task.status, "cancelled")
         self.assertFalse(task.directory.exists())
 
     async def test_cancel_one_task_keeps_other_running(self):
@@ -282,7 +368,7 @@ class CancellationTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_limits_apply_before_spawn(self):
         task, _ = await self.running_task()
-        with patch.object(settings, "max_active_file_tasks", 1):
+        with patch.object(settings, "max_queue_total", 1):
             with self.assertRaises(Exception) as error:
                 manager.create_task("https://youtu.be/other")
         self.assertEqual(error.exception.status_code, 503)

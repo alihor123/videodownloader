@@ -18,7 +18,8 @@ const TASK_ERROR_MESSAGES = {
 }
 const MAX_POLL_NETWORK_ERRORS = 5
 const FINISHED_STATUSES = new Set<MediaTask['status']>(['completed', 'failed', 'cancelled'])
-const RUNNING_STATUSES = new Set<MediaTask['status']>(['queued', 'running', 'sending'])
+const RUNNING_STATUSES = new Set<MediaTask['status']>(['queued', 'running', 'cancelling'])
+export const LOST_TASK_MESSAGE = 'Сервер был перезапущен, и эта задача больше не существует. Запустите скачивание заново.'
 
 export function useMediaController() {
   const [searchQuery, setSearchQuery] = useState('')
@@ -133,6 +134,12 @@ export function useMediaController() {
 
       let pollNetworkErrorCount = 0
       let downloadStarted = false
+      const finishPreparation = () => {
+        if (operationRef.current !== operation) return
+        // Передача началась: дальше браузер управляет скачиванием сам.
+        operationRef.current = null
+        setIsDownloading(false)
+      }
       while (!FINISHED_STATUSES.has(task.status)) {
         if (operation.controller.signal.aborted || operationRef.current !== operation) return
         if (task.status === 'ready' && !downloadStarted && task.download_url) {
@@ -148,11 +155,18 @@ export function useMediaController() {
           if (error instanceof ApiError && error.status === undefined && ++pollNetworkErrorCount <= MAX_POLL_NETWORK_ERRORS) {
             continue
           }
+          if (error instanceof ApiError && error.status === 404) {
+            throw new ApiError(LOST_TASK_MESSAGE, 404)
+          }
           throw error
         }
         pollNetworkErrorCount = 0
         if (operation.controller.signal.aborted || operationRef.current !== operation) return
         setDownloadTask(task)
+        if (task.status === 'sending') {
+          finishPreparation()
+          return
+        }
       }
 
       if (task.status === 'failed') {

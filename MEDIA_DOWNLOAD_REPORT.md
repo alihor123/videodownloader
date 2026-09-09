@@ -1,55 +1,96 @@
-# Загрузка медиа: реализация и проверка
+# Отчёт по загрузке медиа и production-beta
 
-## Что поддерживается
+Дата аудита: 2026-09-09.
 
-URL определяется по настоящему hostname в [media_platforms.py](back/services/media_platforms.py): YouTube, Rutube, VK Видео, X/Twitter, TikTok и Instagram. Worker использует один общий `yt-dlp`-поток на операцию в [media_worker.py](back/services/media_worker.py); произвольные/generic URL запрещены. Telegram не входит в область этой реализации.
+## Архитектура
 
-Поддержка адаптера не означает доступность каждого ролика: закрытые материалы, эфиры и изменения на стороне платформ могут быть недоступны. Для TikTok требуется установленный `curl-cffi`, потому что extractor использует имитацию браузера. Проверочный публичный ролик TikTok работает без cookies; вертикальные форматы сохраняют техническую высоту для yt-dlp, но показывают человеку корректные `540p`, `720p` и `1080p`.
+Backend использует три in-memory очереди в одном процессе: `info`, `fast` и `file`. `info` получает метаданные и форматы, `fast` — цельные потоки с аудио, `file` — обычную загрузку через yt-dlp с проверкой временного файла и, при необходимости, ffmpeg. По умолчанию работают 1 info-worker, 4 fast-worker и 3 file-worker. После подготовки fast worker освобождается, а передача проксируется без отдельного лимита.
 
-## API и жизненный цикл
+Worker — asyncio-задача, забирающая элемент из очереди и управляющая медиа-задачей. Для обработки worker запускает отдельный subprocess `services.media_worker`; это не отдельный серверный процесс очереди. Дерево yt-dlp/ffmpeg/JS runtime завершается через Windows Job Object или POSIX process group.
 
-- `GET /api/media/platforms` — список платформ.
-- `POST /api/media/info` — один ожидающий запрос метаданных с UUID клиента; сервер отменяет worker при disconnect.
-- `POST /api/media/download-tasks` — создание фоновой download-задачи с UUID клиента.
-- `GET /api/media/download-tasks/{task_id}` — статус; готовая download-задача возвращает адрес native browser download.
-- `DELETE /api/media/download-tasks/{task_id}` — отмена.
-- `/api/youtube` оставлен как совместимый alias этого же роутера в [app.py](back/app.py).
+Очереди ограничены по размеру, общий лимит и per-IP лимит проверяются до постановки задачи. После рестарта процесса in-memory задачи исчезают, а временные каталоги очищаются при старте. Это принятое поведение beta; Redis сейчас не требуется.
 
-UUID download-задачи известен браузеру до POST. Поэтому DELETE, пришедший раньше POST, создаёт tombstone: последующий POST не сможет воскресить работу — это реализовано в [cancel_task](back/services/media_tasks.py) и [create_task](back/services/media_tasks.py). Метаданные получают одним `POST /info`, без status polling; его `finally` ждёт cleanup worker, а успешная info-задача очищается без tombstone. Фронтенд хранит одну текущую операцию с `AbortController`, подтверждает DELETE до очистки UI и отменяет её также при `pagehide`/unmount: [useMediaController.ts](front/src/pages/MainPage/useMediaController.ts), [yt.api.ts](front/src/services/yt.api.ts).
+## Fast
 
-Все форматы подготавливаются в управляемом worker-файле, включая ранее «быстрые» цельные MP4 (`fast=false` в [media_worker.py](back/services/media_worker.py)). Это сознательный обмен прямой байтовой передачи на единый механизм отмены и очистки: готовый файл отдаётся нативной загрузкой браузера, а не обещанным direct/fast stream.
+`fast=true` направляет задачу в fast queue. Worker получает цельный формат и отдаёт его через `ManagedFastResponse`, проксирующий upstream через backend. CDN URL и upstream headers не выдаются браузеру и не попадают в serialization.
 
-## Отмена, лимиты и очистка
+После подготовки fast-поток сразу проксируется через backend, как обычная передача готового файла. Отмена закрывает upstream, выставляет `cancelled`, сигнализирует `transfer_done` и не засчитывает частичный поток как completed.
 
-`DELETE` ждёт окончания worker и его потомков, а при активной HTTP-передаче — ещё и `transfer_done`; это видно в [cancel_task](back/services/media_tasks.py) и [ManagedFileResponse](back/routers/media_router.py). На Windows worker закрепляется в Job Object с `KILL_ON_JOB_CLOSE`; закрытие handle убивает всё дерево. На POSIX создаётся отдельная session/process group, затем отправляются SIGTERM и SIGKILL: [process_tree.py](back/services/process_tree.py). Состояние `ready` публикуется лишь после teardown группы, поэтому передача не стартует одновременно с очисткой файла.
+Если fast extractor присылает fallback-событие, задача с тем же `task_id` переводится в file queue с `requested_fast=false`. Переход проверен отдельным queue-тестом, а на живом TikTok — реальным скачиванием через fallback.
 
-Файл задачи расположен строго в собственной UUID-папке. [cleanup_directory](back/services/media_tasks.py) проверяет её родителя перед `rmtree`; ошибки доступа оставляет для следующей попытки. Reaper выполняется каждые 2 секунды и не прекращается от `OSError` одной папки. Он отменяет пропавших клиентов после lease 90 секунд, готовый файл после 120 секунд и очищает старые записи через 90 минут. Отдельный worker ограничен 100 секундами для метаданных и 900 секундами для загрузки. Бюджет 2 GiB также проверяется раз в 2 секунды, поэтому это не жёсткий realtime-лимит.
+## Отмена и очистка
 
-Native browser download может уже получить буфер или завершённый файл до DELETE; сервер не может и не должен удалять пользовательский файл. Аналогично nginx/прокси могут буферизовать ответ. В [README.md](README.md) для production указаны `proxy_buffering off`, `KillMode=control-group`, `TimeoutStopSec=90` и `SendSIGKILL=yes`. Linux отмена проверена mock-протоколом; реальные дочерние процессы и ffmpeg проверялись на Windows. Запускать backend следует одним uvicorn worker: память задач процесс-локальная.
+Отмена queued-задачи не запускает subprocess. Отмена running-задачи останавливает всё дерево процессов. Отмена file/fast transfer закрывает поток, удаляет временную директорию и выставляет `transfer_done`. Reaper удаляет просроченные задачи, старые готовые файлы и задачи, превысившие disk budget.
 
-## Проверки
+## Тесты
 
-Backend (из `back`):
+Backend из каталога `back`:
 
 ```powershell
-python -m unittest discover -s tests -v
+python -m unittest discover -s tests
 ```
 
-Результат: **30 тестов, OK** для media lifecycle, платформенных форматов и entrypoint. Набор [test_media.py](back/tests/test_media.py) включает реальную Windows-отмену child/ffmpeg, очистку partial-файлов, отмену до POST, независимость соседней задачи, timeout/lease/disk cleanup, HTTP transfer/disconnect, один POST метаданных без polling, cleanup при disconnect, portrait-форматы TikTok и понятную ошибку при отсутствии browser impersonation. [test_entrypoint.py](back/tests/test_entrypoint.py) фиксирует `reload=False` при `python app.py`: reload на Windows переключает uvicorn на Selector loop, который не поддерживает `asyncio.create_subprocess_exec`.
+Результат аудита: **44 теста, OK**. Покрыты queue startup, capacity/per-IP, queue position, queued cancel, info/fast dispatch, fast → file fallback с сохранением task ID, fast response cancellation, process-tree cancellation, cleanup, timeout, transfer disconnect, URL normalization и пользовательские ошибки.
+
+Frontend из каталога `front`:
+
+```powershell
+npm.cmd run test:contract
+npm.cmd run build
+npm.cmd run lint
+npm.cmd run test:ui
+```
+
+Все команды прошли. UI smoke на Chromium проверяет cancel до POST-ответа, metadata flow, download cancel, повторный поиск, clear, desktop/mobile/dark layout и отсутствие JS errors.
+
+## Probe-команды
 
 ```powershell
 python -m tests.probe_platforms
-python -m tests.probe_platforms rutube --download
+python -m tests.probe_platforms youtube
+python -m tests.probe_platforms https://public.example/video
 ```
 
-Frontend (из `front`):
+Probe печатает только platform/status/format counts/fast labels/error и не печатает URL, headers или cookies. Для скачивания есть безопасный live probe:
 
 ```powershell
-npm.cmd run build
-$env:PLAYWRIGHT_MODULE='C:\Users\Egor\AppData\Local\npm-cache\_npx\e41f203b7505f1fb\node_modules\playwright'
-node tests/media-ui.cjs
+python -m tests.live_download_probe https://public.example/video --mode file
+python -m tests.live_download_probe https://public.example/video --mode fast
 ```
 
-Фронтенд использует strict TypeScript. `npm.cmd run typecheck`, `npm.cmd run lint` и `npm.cmd run build` должны завершаться без ошибок. UI test проверяет отмену отложенного POST, отмену загрузки, отмену предыдущего поиска, очистку формы, desktop/mobile/dark layout и JavaScript errors. Скриншоты создаются только в игнорируемой `front/tmp/ui-checks/`.
+File mode проверяет полный непустой временный файл и cleanup. Fast mode читает максимум 256 KiB и затем отменяет задачу; частичный fast результат не считается completed.
 
-Продакшен и удалённый сервер не менялись. Локальный backend перезапущен из `back/venv`, чтобы TikTok использовал установленный `curl-cffi`; основной Vite пользователя оставлен запущенным. Временные процессы, созданные для тестов, остановлены.
+## Live matrix
+
+Проверено 2026-09-09 с текущего IP и текущей версией yt-dlp:
+
+| Платформа | Реальная проверка | Результат |
+| --- | --- | --- |
+| YouTube | обычное видео fast и file, Shorts file | скачивание прошло |
+| Rutube | обычное видео file, Shorts file | скачивание прошло |
+| VK Видео | клип file | скачивание прошло |
+| X/Twitter | пост с видео file | скачивание прошло |
+| TikTok | пользовательская ссылка fast | fast-источник не прошёл probe, задача автоматически перешла в file и скачалась |
+| Instagram | Reel file | скачивание прошло |
+| Instagram | carousel из нескольких материалов | намеренно отклонён с понятным сообщением; carousel пока не поддерживается |
+
+Без cookie-файлов получение метаданных прошло для репозиторных примеров YouTube, Rutube, VK, X/Twitter и Instagram. Старый TikTok-пример был заблокирован платформой по IP, а актуальная пользовательская TikTok-ссылка без TikTok cookies скачалась через file fallback. Это снимок, а не постоянная гарантия: платформы меняют защиту, и результат зависит от IP, cookies и версии yt-dlp. TikTok дополнительно использует `curl-cffi`; cookies не заменяют browser impersonation.
+
+## Готовность к test production
+
+Код готов к контролируемому beta-деплою с небольшой нагрузкой. Перед открытием трафика нужно:
+
+1. Задеплоить текущий backend и frontend: опубликованный домен пока отвечает старой frontend-сборкой, а `/api/media/platforms` возвращает 404.
+2. Применить production nginx/systemd из README: HTTPS, SPA fallback, API proxy timeouts, `proxy_buffering off`, один uvicorn process и process-group shutdown.
+3. После деплоя повторить API/UI smoke непосредственно через публичный домен.
+4. Не публиковать `.env` и cookie-файлы. Все cookies должны оставаться отдельными файлами вне Git.
+
+Очереди in-memory требуют ровно один uvicorn process. При рестарте незавершённые задачи пропадут; frontend покажет понятное сообщение и предложит начать заново. Для beta это допустимо. Для нескольких backend-процессов или нескольких серверов понадобится общая очередь, например Redis.
+
+## Индексация
+
+В сборке есть русские title/description, canonical, Open Graph, Twitter metadata, `robots.txt` и `sitemap.xml`. Это делает главную страницу технически доступной для индексации, но не гарантирует попадание в выдачу. На 2026-09-09 публичные `/`, `/robots.txt` и `/sitemap.xml` отвечают 200, однако домен ещё отдаёт старые YouTube-only metadata. После деплоя нужно добавить sitemap в Google Search Console и Яндекс Вебмастер и запросить переобход главной.
+
+Это SPA с одной индексируемой страницей. Отдельных SSR-страниц платформ сейчас нет; для test beta это нормально.
+
+`npm audit` и `npm audit --omit=dev` после `npm audit fix` показывают 0 vulnerabilities.

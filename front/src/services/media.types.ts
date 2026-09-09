@@ -3,6 +3,7 @@ export type PlatformId = 'youtube' | 'rutube' | 'vk' | 'twitter' | 'tiktok' | 'i
 export type MediaTaskStatus =
   | 'queued'
   | 'running'
+  | 'cancelling'
   | 'ready'
   | 'sending'
   | 'failed'
@@ -16,6 +17,7 @@ export interface Platform {
 
 export interface MediaFormat {
   height: number
+  kind: 'video' | 'audio'
   label: string
   ext: 'mp4' | 'mp3'
   size: string | null
@@ -43,6 +45,9 @@ export interface MediaTask {
   error?: string | null
   error_code?: number | null
   download_url?: string | null
+  queue?: 'info' | 'fast' | 'file' | string | null
+  queue_position?: number | null
+  delivery_mode?: 'fast' | 'file' | string | null
 }
 
 export interface Operation {

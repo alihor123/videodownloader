@@ -20,6 +20,43 @@ def has_audio_stream(format_data):
     return format_data.get("acodec") not in {None, "none"}
 
 
+def is_muxed_format(format_data):
+    """True only for a format containing both video and audio streams."""
+    return has_video_stream(format_data) and has_audio_stream(format_data)
+
+
+def is_fast_direct_format(format_data):
+    """Whether a muxed format can be proxied as one HTTP media stream."""
+    return (is_muxed_format(format_data) and format_data.get("url") and
+            format_data.get("protocol") in {None, "http", "https"})
+
+
+def select_fast_format(info, height):
+    """Select a directly downloadable muxed format for the requested height.
+
+    Fast delivery cannot merge separate streams, so formats without an audio
+    stream are deliberately excluded.  The requested selector height must be
+    present exactly; otherwise the caller can fall back to a regular download.
+    Among exact matches, prefer MP4 and then the highest bitrate.
+    """
+    try:
+        requested = int(height)
+    except (TypeError, ValueError):
+        requested = 720
+    candidates = [item for item in info.get("formats", [])
+                  if is_fast_direct_format(item) and item.get("height") == requested]
+    if not candidates:
+        return None
+
+    def preference(item):
+        # MP4 is the most predictable browser download container.
+        mp4_penalty = 0 if item.get("ext") == "mp4" else 1
+        return (mp4_penalty,
+                -(item.get("tbr") or 0), -(get_filesize(item) or 0))
+
+    return min(candidates, key=preference)
+
+
 def get_audio_bitrate(format_data):
     bitrate = format_data.get("abr")
     return round(bitrate) if bitrate else None
@@ -97,8 +134,8 @@ def get_audio_download_bitrate(height):
     return str(height) if is_audio_download(height) else None
 
 
-def get_output_ext(height):
-    return "mp3" if is_audio_download(height) else "mp4"
+def get_output_ext(height, kind="video"):
+    return "mp3" if kind == "audio" else "mp4"
 
 
 def get_video_height_range_filter(height):
@@ -109,9 +146,9 @@ def get_video_height_range_filter(height):
     return f"[height>{max(lower_heights)}][height<={height}]"
 
 
-def get_download_format(height):
-    if is_audio_download(height):
-        return f"bestaudio[abr<={get_audio_download_bitrate(height)}]/bestaudio"
+def get_download_format(height, kind="video"):
+    if kind == "audio":
+        return f"bestaudio[abr<={height}]/bestaudio"
     height_filter = get_video_height_range_filter(height)
     return (
         f"best{height_filter}[ext=mp4]/"
@@ -123,6 +160,7 @@ def get_download_format(height):
 
 def build_format_list(info):
     video_by_height = {}
+    fast_by_height = set()
     audio_by_quality = {}
     max_audio_size = 0
 
@@ -132,6 +170,8 @@ def build_format_list(info):
             display_height = get_display_height(format_data)
             if not selector_height or not display_height:
                 continue
+            if is_fast_direct_format(format_data):
+                fast_by_height.add(selector_height)
             # height остаётся техническим значением для фильтра yt-dlp; label — качеством для человека.
             if selector_height not in video_by_height or get_filesize(format_data) > get_filesize(video_by_height[selector_height]):
                 video_by_height[selector_height] = format_data
@@ -155,11 +195,11 @@ def build_format_list(info):
             media_format.get("format_note"), media_format.get("format_id"),
         )):
             display_height = round_height(display_height)
-        formats.append({"height": selector_height, "label": f"{display_height}p", "ext": "mp4",
-                        "size": format_filesize(size), "fast": has_audio})
+        formats.append({"height": selector_height, "kind": "video", "label": f"{display_height}p", "ext": "mp4",
+                        "size": format_filesize(size), "fast": selector_height in fast_by_height})
 
     for quality, media_format in sorted(audio_by_quality.items(), key=lambda item: get_audio_bitrate(item[1])):
-        formats.append({"height": get_audio_bitrate(media_format), "label": quality, "ext": "mp3",
+        formats.append({"height": get_audio_bitrate(media_format), "kind": "audio", "label": quality, "ext": "mp3",
                         "size": format_filesize(get_filesize(media_format)), "fast": False})
     return formats
 

@@ -42,9 +42,14 @@ export default function MainPage() {
     resetSearch,
   } = controller
 
+  const queueMessage = downloadTask?.status === 'queued'
+    && typeof downloadTask.queue_position === 'number'
+    && downloadTask.queue_position > 0
+    ? `В очереди на скачивание: ${downloadTask.queue_position}`
+    : null
   const downloadMessage = isCancelling
     ? 'Останавливаем обработку на сервере...'
-    : downloadError ?? (downloadTask?.message
+    : downloadError ?? queueMessage ?? (downloadTask?.message
       ? `${downloadTask.message}${isDownloadRunning ? '...' : ''}`
       : 'Готов к скачиванию')
   const downloadProgress = Math.max(0, Math.min(100, downloadError ? 0 : downloadTask?.progress ?? 0))

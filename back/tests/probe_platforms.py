@@ -1,10 +1,16 @@
-"""Ручная сетевая проверка публичных примеров yt-dlp, без скачивания видео."""
+"""Network smoke probe (metadata by default, no video download).
+
+Run from ``back`` as ``python -m tests.probe_platforms``. A platform name
+selects the built-in example; passing an https URL probes it without printing
+source URLs, headers, or cookie contents.
+"""
 import asyncio
 import json
 import tempfile
 from pathlib import Path
 
 from services import media_tasks as manager
+from services.media_platforms import detect_platform
 
 
 EXAMPLES = {
@@ -22,17 +28,22 @@ async def main():
     semaphore = asyncio.Semaphore(3)
     with tempfile.TemporaryDirectory(prefix="media-probe-") as directory:
         manager.TASK_ROOT = Path(directory) / "tasks"
+        reaper = await manager.start_tasks()
 
         async def probe(platform, url):
             async with semaphore:
                 task = manager.create_task(url, mode="info")
-                await task.runner
-                print(json.dumps({"platform": platform, "url": url, "status": task.status,
+                while task.status not in {"ready", "failed", "cancelled"}:
+                    await asyncio.sleep(0.1)
+                print(json.dumps({"platform": platform, "status": task.status,
                                   "formats": len((task.result or {}).get("formats", [])),
+                                  "fast_formats": sum(1 for item in (task.result or {}).get("formats", []) if item.get("fast")),
+                                  "fast_labels": [item.get("label") for item in (task.result or {}).get("formats", []) if item.get("fast")],
                                   "error": task.error}, ensure_ascii=True), flush=True)
                 if "--download" in sys.argv and task.status == "ready" and platform == "rutube":
                     download = manager.create_task(url, height=task.result["formats"][0]["height"])
-                    await download.runner
+                    while download.status not in {"ready", "failed", "cancelled"}:
+                        await asyncio.sleep(0.1)
                     if download.status == "ready":
                         path = download.directory / download.result["filename"]
                         print(json.dumps({"download": platform, "status": download.status, "bytes": path.stat().st_size,
@@ -42,8 +53,16 @@ async def main():
                     await manager.cancel_task(download.id)
                 await manager.cancel_task(task.id)
 
-        selected = {key: url for key, url in EXAMPLES.items() if len(sys.argv) == 1 or key in sys.argv or sys.argv[1] == "--download"}
-        await asyncio.gather(*(probe(platform, url) for platform, url in selected.items()))
+        try:
+            args = [arg for arg in sys.argv[1:] if arg != "--download"]
+            custom = next((arg for arg in args if arg.startswith("https://")), None)
+            if custom:
+                selected = {detect_platform(custom)["id"]: custom}
+            else:
+                selected = {key: url for key, url in EXAMPLES.items() if not args or key in args or "--download" in sys.argv}
+            await asyncio.gather(*(probe(platform, url) for platform, url in selected.items()))
+        finally:
+            await manager.shutdown_tasks(reaper)
 
 
 if __name__ == "__main__":

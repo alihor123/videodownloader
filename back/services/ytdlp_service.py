@@ -5,9 +5,7 @@ import yt_dlp
 
 from config import settings
 from services.media_formats import (
-    get_audio_download_bitrate,
     get_download_format,
-    is_audio_download,
 )
 
 
@@ -33,21 +31,21 @@ def get_info_ydl_opts():
     return YDL_COMMON_OPTS.copy()
 
 
-def get_download_ydl_opts(height, file_ext, download_path, progress_hook):
+def get_download_ydl_opts(height, file_ext, download_path, progress_hook, kind="video"):
     options = {
         **YDL_COMMON_OPTS,
         "quiet": False,
-        "format": get_download_format(height),
+        "format": get_download_format(height, kind),
         "outtmpl": download_path,
         "ffmpeg_location": str(settings.ffmpeg_path),
         "progress_hooks": [progress_hook],
         "postprocessor_hooks": [progress_hook],
     }
-    if is_audio_download(height):
+    if kind == "audio":
         options["postprocessors"] = [{
             "key": "FFmpegExtractAudio",
             "preferredcodec": file_ext,
-            "preferredquality": get_audio_download_bitrate(height),
+            "preferredquality": str(height),
         }]
     else:
         options["merge_output_format"] = "mp4"
