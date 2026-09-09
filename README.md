@@ -186,7 +186,7 @@ sudo rsync -a --delete /srv/apps/videodownloader/repo/front/dist/ /var/www/video
 ```nginx
 server {
     listen 80;
-    server_name videoloader.a4dev.online;
+    server_name videoloader.a4dev.ru;
 
     root /var/www/videodownloader;
     index index.html;
@@ -226,14 +226,14 @@ sudo systemctl reload nginx
 
 ```bash
 sudo apt install -y certbot python3-certbot-nginx
-sudo certbot --nginx -d videoloader.a4dev.online
+sudo certbot --nginx -d videoloader.a4dev.ru
 ```
 
 Проверь, что:
 
 ```text
-https://videoloader.a4dev.online
-POST https://videoloader.a4dev.online/api/media/info с JSON `{"url":"<video_url>"}`
+https://videoloader.a4dev.ru
+POST https://videoloader.a4dev.ru/api/media/info с JSON `{"url":"<video_url>"}`
 ```
 
 ## 10) Повторный деплой (обновление)

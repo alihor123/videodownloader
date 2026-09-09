@@ -18,7 +18,7 @@ assert.match(controller, /\['queued', 'running', 'cancelling'\]/)
 assert.match(fs.readFileSync(path.join(root, 'src/pages/MainPage/MainPage.tsx'), 'utf8'), /В очереди на скачивание/)
 assert.match(index, /<title>VideoLoader — видео под рукой<\/title>/)
 assert.match(index, /41f5007b-1a7d-4c31-bb31-793f75620acf\.png/)
-assert.match(index, /<link rel="canonical" href="https:\/\/a4dev\.ru\//)
+assert.match(index, /<link rel="canonical" href="https:\/\/videoloader\.a4dev\.ru\//)
 assert.match(index, /<meta name="robots" content="index,follow/)
 
 console.log('PASS: media queue contract, lost-task message, and SEO metadata')
