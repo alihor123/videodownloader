@@ -18,7 +18,10 @@ from services import media_tasks as manager
 from services.media_platforms import detect_platform, normalize_platform_url
 from services.media_formats import build_format_list, format_duration, format_filesize, select_fast_format
 from services import process_tree
-from services.media_worker import get_platform_cookie_file, get_user_error, probe_fast_source
+from services.media_worker import (
+    get_platform_cookie_file, get_user_error, probe_fast_source,
+    should_retry_without_youtube_cookies,
+)
 
 
 async def wait_for_condition(condition, timeout):
@@ -175,6 +178,13 @@ class PlatformsTest(unittest.TestCase):
                  patch.object(settings, "youtube_cookies_file", Path(directory) / "youtube.txt"):
                 self.assertEqual(get_platform_cookie_file("instagram"), instagram_cookie)
                 self.assertIsNone(get_platform_cookie_file("youtube"))
+
+    def test_invalid_youtube_cookie_retries_once_without_it(self):
+        cookie_file = Path("youtube.txt")
+        error = Exception("The page needs to be reloaded")
+        self.assertTrue(should_retry_without_youtube_cookies(error, "youtube", cookie_file))
+        self.assertFalse(should_retry_without_youtube_cookies(error, "instagram", cookie_file))
+        self.assertFalse(should_retry_without_youtube_cookies(error, "youtube", None))
 
     def test_tiktok_browser_challenge_explains_missing_impersonation(self):
         message = get_user_error(

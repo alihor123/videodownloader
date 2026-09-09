@@ -76,6 +76,12 @@ def get_platform_cookie_file(platform_id):
     return cookie_file if cookie_file and cookie_file.is_file() else None
 
 
+def should_retry_without_youtube_cookies(error, platform_id, cookie_file):
+    """Протухшая YouTube-сессия не должна ломать публичные ролики."""
+    return (platform_id == "youtube" and cookie_file and
+            "page needs to be reloaded" in str(error).lower())
+
+
 def get_fast_headers(format_data):
     """Return only headers needed by the upstream proxy, never extractor data."""
     allowed = {"user-agent", "referer", "origin", "accept", "accept-language"}
@@ -159,12 +165,16 @@ def main():
     from yt_dlp.utils import DownloadError
     try:
         info = extract_info(source_url, opts, download=payload["mode"] == "download")
-    except DownloadError:
-        if platform["id"] != "twitter":
-            raise
-        # Публичные посты иногда недоступны гостевому GraphQL, но доступны через embed API.
-        opts["extractor_args"] = {"twitter": {"api": ["syndication"]}}
-        info = extract_info(source_url, opts, download=payload["mode"] == "download")
+    except DownloadError as error:
+        if should_retry_without_youtube_cookies(error, platform["id"], cookie_file):
+            opts.pop("cookiefile", None)
+            info = extract_info(source_url, opts, download=payload["mode"] == "download")
+        else:
+            if platform["id"] != "twitter":
+                raise
+            # Публичные посты иногда недоступны гостевому GraphQL, но доступны через embed API.
+            opts["extractor_args"] = {"twitter": {"api": ["syndication"]}}
+            info = extract_info(source_url, opts, download=payload["mode"] == "download")
     if not info or info.get("_type") in {"playlist", "multi_video"} or info.get("is_live"):
         raise ValueError("Нужна ссылка на отдельное опубликованное видео")
     if payload["mode"] == "info":
