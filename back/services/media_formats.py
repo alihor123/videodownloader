@@ -62,13 +62,6 @@ def get_audio_bitrate(format_data):
     return round(bitrate) if bitrate else None
 
 
-def round_height(raw_height):
-    for height in STANDARD_HEIGHTS:
-        if raw_height <= height:
-            return height
-    return raw_height
-
-
 def get_display_height(format_data):
     """У вертикального ролика качество задаёт короткая сторона, а не высота кадра."""
     for value in (format_data.get("format_note"), format_data.get("format_id")):
@@ -159,7 +152,7 @@ def get_download_format(height, kind="video"):
 
 
 def build_format_list(info):
-    video_by_height = {}
+    video_by_quality = {}
     fast_by_height = set()
     audio_by_quality = {}
     max_audio_size = 0
@@ -172,9 +165,12 @@ def build_format_list(info):
                 continue
             if is_fast_direct_format(format_data):
                 fast_by_height.add(selector_height)
-            # height остаётся техническим значением для фильтра yt-dlp; label — качеством для человека.
-            if selector_height not in video_by_height or get_filesize(format_data) > get_filesize(video_by_height[selector_height]):
-                video_by_height[selector_height] = format_data
+            # Выбираем один лучший поток на видимое качество: 540p не должен стать вторым 720p.
+            previous = video_by_quality.get(display_height)
+            if previous is None or (get_filesize(format_data), format_data.get("tbr") or 0) > (
+                get_filesize(previous), previous.get("tbr") or 0
+            ):
+                video_by_quality[display_height] = format_data
         elif has_audio_stream(format_data):
             max_audio_size = max(max_audio_size, get_filesize(format_data))
             bitrate = get_audio_bitrate(format_data)
@@ -186,15 +182,11 @@ def build_format_list(info):
                 audio_by_quality[quality] = format_data
 
     formats = []
-    for selector_height in sorted(video_by_height):
-        media_format = video_by_height[selector_height]
+    for display_height in sorted(video_by_quality):
+        media_format = video_by_quality[display_height]
+        selector_height = media_format["height"]
         has_audio = has_audio_stream(media_format)
         size = get_filesize(media_format) + (0 if has_audio else max_audio_size)
-        display_height = get_display_height(media_format)
-        if not any(QUALITY_MARKER_RE.search(value or "") for value in (
-            media_format.get("format_note"), media_format.get("format_id"),
-        )):
-            display_height = round_height(display_height)
         formats.append({"height": selector_height, "kind": "video", "label": f"{display_height}p", "ext": "mp4",
                         "size": format_filesize(size), "fast": selector_height in fast_by_height})
 

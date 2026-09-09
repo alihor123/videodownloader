@@ -77,6 +77,17 @@ class PlatformsTest(unittest.TestCase):
         self.assertEqual([item["height"] for item in formats], [1024, 1280, 1920])
         self.assertEqual([item["label"] for item in formats], ["540p", "720p", "1080p"])
 
+    def test_portrait_formats_do_not_round_540p_to_a_second_720p(self):
+        formats = build_format_list({"formats": [
+            {"width": 540, "height": 960, "vcodec": "vp9", "acodec": "none", "ext": "mp4", "tbr": 258},
+            {"width": 720, "height": 1280, "vcodec": "vp9", "acodec": "none", "ext": "mp4", "tbr": 515},
+            {"width": 720, "height": 1280, "vcodec": "vp9", "acodec": "none", "ext": "mp4", "tbr": 1729},
+            {"width": 1080, "height": 1920, "vcodec": "vp9", "acodec": "none", "ext": "mp4", "tbr": 2552},
+        ]})
+        self.assertEqual([item["height"] for item in formats], [960, 1280, 1920])
+        self.assertEqual([item["label"] for item in formats], ["540p", "720p", "1080p"])
+        self.assertTrue(all(item["size"] is None for item in formats))
+
     def test_split_quality_is_fast_when_muxed_variant_exists(self):
         formats = build_format_list({"formats": [
             {"height": 720, "width": 1280, "vcodec": "avc", "acodec": "none",
