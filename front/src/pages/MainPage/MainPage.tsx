@@ -53,6 +53,7 @@ export default function MainPage() {
       : 'Готов к скачиванию')
   const downloadProgress = Math.max(0, Math.min(100, downloadError ? 0 : downloadTask?.progress ?? 0))
   const contentClass = `${styles.content} ${videoData ? styles.contentLoaded : ''}`
+  const mainClass = `${styles.main} ${videoData ? styles.mainLoaded : ''}`
 
   function handleQueryChange(event: ChangeEvent<HTMLInputElement>): void {
     setSearchQuery(event.target.value)
@@ -63,7 +64,7 @@ export default function MainPage() {
   }
 
   return (
-    <main className={styles.main}>
+    <main className={mainClass}>
       <div className={styles.container}>
         <Header />
         <div className={contentClass}>
