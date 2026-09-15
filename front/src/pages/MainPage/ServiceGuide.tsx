@@ -41,9 +41,9 @@ export function PlatformIcon({ platform }: { platform: PlatformId }) {
   ) : null
 }
 
-export function PlatformBadge({ platform, compact = false }: { platform: Platform; compact?: boolean }) {
+export function PlatformBadge({ platform }: { platform: Platform }) {
   return (
-    <div className={`${styles.platform} ${compact ? styles.platformCompact : ''}`}>
+    <div className={styles.platform}>
       <PlatformIcon platform={platform.id} />
       <span className={styles.platformName}>{platform.name}</span>
     </div>
