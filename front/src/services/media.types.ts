@@ -28,7 +28,7 @@ export interface MediaInfo {
   url: string
   title: string
   uploader: string
-  duration: string
+  duration: string | null
   views: string | null
   thumbnail: string | null
   platform: PlatformId

@@ -140,10 +140,12 @@ export default function MainPage() {
                       <SvgIcon className={styles.metaIcon} svg={personIcon} />
                       <span>{videoData.uploader}</span>
                     </div>
-                    <div className={styles.metaItem}>
-                      <SvgIcon className={styles.metaIcon} svg={scheduleIcon} />
-                      <span>{videoData.duration}</span>
-                    </div>
+                    {videoData.duration && (
+                      <div className={styles.metaItem}>
+                        <SvgIcon className={styles.metaIcon} svg={scheduleIcon} />
+                        <span>{videoData.duration}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

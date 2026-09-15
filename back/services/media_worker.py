@@ -202,9 +202,10 @@ def main():
             raise ValueError("Нет доступных форматов для скачивания")
         # Все загрузки проходят через управляемый worker, включая цельные MP4.
         view_count = info.get("view_count")
+        duration = info.get("duration")
         emit("result", data={"title": info.get("title", "Видео"), "thumbnail": info.get("thumbnail"),
                              "uploader": info.get("uploader") or "Неизвестный автор",
-                             "duration": format_duration(info.get("duration", 0)),
+                             "duration": format_duration(duration) if duration else None,
                              "views": format_views(view_count) if view_count is not None else None,
                              "formats": formats, "platform": platform["id"], "platform_name": platform["name"], "url": payload["url"]})
     elif payload["mode"] == "fast":
