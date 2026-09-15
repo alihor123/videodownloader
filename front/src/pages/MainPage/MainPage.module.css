@@ -233,9 +233,9 @@
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
     grid-template-areas:
-        "thumbnail meta"
-        "title title";
-    align-items: start;
+        "thumbnail title"
+        "thumbnail meta";
+    align-items: center;
     column-gap: 14px;
     row-gap: 8px;
     flex-shrink: 0;
@@ -244,9 +244,9 @@
 .videoThumbnail {
     grid-area: thumbnail;
     width: auto;
-    height: auto;
+    height: 110px;
     max-width: 220px;
-    max-height: 110px;
+    max-height: none;
     flex-shrink: 0;
     border-radius: 13px;
     object-fit: contain;
@@ -273,9 +273,8 @@
 .videoMeta {
     grid-area: meta;
     display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
+    align-items: center;
+    gap: 16px;
     color: var(--text-muted);
     font-size: 14px;
     font-weight: 600;
@@ -326,7 +325,7 @@
     align-items: center;
     justify-content: space-between;
     gap: 16px;
-    padding-bottom: 10px;
+    padding: 0 6px 10px 6px;
 }
 
 .qualityHeader {
@@ -341,9 +340,9 @@
     align-items: center;
     justify-content: flex-end;
     min-width: 0;
-    gap: 7px;
+    gap: 4px;
     color: var(--text-accent);
-    font-size: 14px;
+    font-size: 16px;
     font-weight: 750;
     line-height: 1.25;
 }
@@ -626,9 +625,9 @@
 
     .videoThumbnail {
         width: auto;
-        height: auto;
-        max-width: 38%;
-        max-height: 82px;
+        height: 100px;
+        max-width: 190px;
+        max-height: none;
         border-radius: 11px;
     }
 
@@ -891,14 +890,32 @@ button:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
 }
 
 @media (max-width: 600px) {
+    .videoInfo {
+        grid-template-areas:
+            "thumbnail meta"
+            "title title";
+        align-items: start;
+    }
+
     .videoThumbnail {
-        max-width: 34vw;
-        max-height: 96px;
+        height: 96px;
+        max-width: 170px;
+    }
+
+    .videoMeta {
+        flex-direction: column;
+        align-items: flex-start;
+        align-self: end;
+        gap: 7px;
     }
 
     .videoTitle {
         -webkit-line-clamp: 3;
         line-clamp: 3;
+    }
+
+    .qualityPlatform {
+        font-size: 14px;
     }
 }
 
