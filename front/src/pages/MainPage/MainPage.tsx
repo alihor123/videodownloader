@@ -124,25 +124,27 @@ export default function MainPage() {
                     }}
                   />
                 )}
-                <div className={styles.videoMeta}>
-                  {videoData.views && (
+                <div className={styles.videoDetails}>
+                  <div className={styles.videoTitle}>{videoData.title}</div>
+                  <div className={styles.videoMeta}>
                     <div className={styles.metaItem}>
-                      <SvgIcon className={styles.metaIcon} svg={visibilityIcon} />
-                      <span>{videoData.views}</span>
+                      <SvgIcon className={styles.metaIcon} svg={personIcon} />
+                      <span>{videoData.uploader}</span>
                     </div>
-                  )}
-                  <div className={styles.metaItem}>
-                    <SvgIcon className={styles.metaIcon} svg={personIcon} />
-                    <span>{videoData.uploader}</span>
+                    {videoData.duration && (
+                      <div className={styles.metaItem}>
+                        <SvgIcon className={styles.metaIcon} svg={scheduleIcon} />
+                        <span>{videoData.duration}</span>
+                      </div>
+                    )}
+                    {videoData.views && (
+                      <div className={styles.metaItem}>
+                        <SvgIcon className={styles.metaIcon} svg={visibilityIcon} />
+                        <span>{videoData.views}</span>
+                      </div>
+                    )}
                   </div>
-                  {videoData.duration && (
-                    <div className={styles.metaItem}>
-                      <SvgIcon className={styles.metaIcon} svg={scheduleIcon} />
-                      <span>{videoData.duration}</span>
-                    </div>
-                  )}
                 </div>
-                <div className={styles.videoTitle}>{videoData.title}</div>
               </div>
 
               {videoData.formats.length > 0 && (

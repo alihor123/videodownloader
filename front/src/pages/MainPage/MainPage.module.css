@@ -230,19 +230,13 @@
 
 .videoInfo {
     padding: 6px 15px 15px;
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    grid-template-areas:
-        "thumbnail title"
-        "thumbnail meta";
+    display: flex;
     align-items: center;
-    column-gap: 14px;
-    row-gap: 8px;
+    gap: 14px;
     flex-shrink: 0;
 }
 
 .videoThumbnail {
-    grid-area: thumbnail;
     width: auto;
     height: 110px;
     max-width: 220px;
@@ -250,12 +244,20 @@
     flex-shrink: 0;
     border-radius: 13px;
     object-fit: contain;
-    align-self: flex-start;
+    align-self: center;
     background: var(--bg-muted);
 }
 
+.videoDetails {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    flex-direction: column;
+    justify-content: center;
+    gap: 10px;
+}
+
 .videoTitle {
-    grid-area: title;
     font-family: var(--font-heading);
     font-weight: 700;
     font-size: 18px;
@@ -271,7 +273,6 @@
 }
 
 .videoMeta {
-    grid-area: meta;
     display: flex;
     align-items: center;
     gap: 16px;
@@ -891,25 +892,37 @@ button:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
 
 @media (max-width: 600px) {
     .videoInfo {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
         grid-template-areas:
             "thumbnail meta"
             "title title";
         align-items: start;
+        column-gap: 10px;
+        row-gap: 9px;
+    }
+
+    .videoDetails {
+        display: contents;
     }
 
     .videoThumbnail {
+        grid-area: thumbnail;
         height: 96px;
         max-width: 170px;
+        align-self: start;
     }
 
     .videoMeta {
+        grid-area: meta;
         flex-direction: column;
         align-items: flex-start;
-        align-self: end;
-        gap: 7px;
+        align-self: center;
+        gap: 8px;
     }
 
     .videoTitle {
+        grid-area: title;
         -webkit-line-clamp: 3;
         line-clamp: 3;
     }
