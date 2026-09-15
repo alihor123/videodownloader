@@ -23,6 +23,7 @@
   --primary: #df102c;
   --primary-light: #ef3048;
   --primary-soft: rgba(223, 16, 44, 0.09);
+  --primary-selected: rgba(223, 16, 44, 0.14);
   --primary-dark: #bd0d25;
 
   --bg-app: #fbfbfb;
@@ -58,6 +59,7 @@
   --primary: #f02038;
   --primary-light: #ff4659;
   --primary-soft: rgba(240, 32, 56, 0.12);
+  --primary-selected: rgba(240, 32, 56, 0.18);
   --primary-dark: #d9142d;
 
   --bg-app: #171717;

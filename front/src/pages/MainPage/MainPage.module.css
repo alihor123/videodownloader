@@ -30,7 +30,7 @@
     width: 100%;
     height: auto;
     border-radius: 22px;
-    border: 1px solid var(--border);
+    border: none;
     background: var(--surface);
     box-shadow: var(--shadow-soft);
     overflow: hidden;
@@ -398,8 +398,8 @@
 }
 
 .selected {
-    background: var(--primary-soft);
-    border-color: var(--primary);
+    background: var(--primary-selected);
+    border-color: transparent;
     box-shadow: none;
 }
 
@@ -717,8 +717,8 @@
 }
 
 .qualityItem.selected:hover {
-    background: var(--primary-soft);
-    border-color: var(--primary);
+    background: var(--primary-selected);
+    border-color: transparent;
     box-shadow: none;
 }
 
