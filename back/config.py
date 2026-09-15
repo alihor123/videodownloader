@@ -1,6 +1,7 @@
 from pathlib import Path
+import sys
 
-from pydantic import model_validator
+from pydantic import SecretStr, model_validator
 from pydantic_settings import BaseSettings
 
 
@@ -75,6 +76,23 @@ class Settings(BaseSettings):
     # Максимум сохранённых записей задач.
     max_retained_media_tasks: int = 1000
 
+    # Автодеплой выключен, пока на сервере не задан секрет webhook.
+    deploy_enabled: bool = False
+    # Секрет для проверки подписи GitHub в заголовке X-Hub-Signature-256.
+    deploy_webhook_secret: SecretStr | None = None
+    # Ветка и репозиторий, из которых разрешён деплой.
+    deploy_branch: str = "update"
+    deploy_repository_url: str = "https://github.com/alihor123/videodownloader.git"
+    # Служебный checkout и временные каталоги сборки.
+    deploy_repository_dir: Path = BASE_DIR.parent / ".deploy" / "repository"
+    deploy_work_dir: Path = BASE_DIR.parent / ".deploy" / "work"
+    # Активные каталоги backend и собранного frontend.
+    deploy_release_dir: Path = BASE_DIR.parent
+    deploy_frontend_dir: Path = BASE_DIR.parent / "front" / "dist"
+    # Python из production-окружения и имя systemd-сервиса backend.
+    deploy_python_path: Path = Path(sys.executable)
+    deploy_backend_service: str = "videodownloader-backend.service"
+
     class Config:
         env_file = BASE_DIR / ".env"
         env_file_encoding = "utf-8"
@@ -89,6 +107,11 @@ class Settings(BaseSettings):
         self.twitter_cookies_file = resolve_optional_path(self.twitter_cookies_file)
         self.tiktok_cookies_file = resolve_optional_path(self.tiktok_cookies_file)
         self.instagram_cookies_file = resolve_optional_path(self.instagram_cookies_file)
+        self.deploy_repository_dir = resolve_optional_path(self.deploy_repository_dir)
+        self.deploy_work_dir = resolve_optional_path(self.deploy_work_dir)
+        self.deploy_release_dir = resolve_optional_path(self.deploy_release_dir)
+        self.deploy_frontend_dir = resolve_optional_path(self.deploy_frontend_dir)
+        self.deploy_python_path = resolve_optional_path(self.deploy_python_path)
 
         return self
 

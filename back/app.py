@@ -2,6 +2,7 @@ from fastapi import FastAPI, APIRouter
 import uvicorn
 from config import settings
 from database.database import lifespan
+from routers.deployment_router import deployment_router
 from routers.media_router import media_router
 
 app = FastAPI(
@@ -14,6 +15,7 @@ app = FastAPI(
 api_router = APIRouter(prefix="/api") #Главный роут
 
 api_router.include_router(media_router, prefix="/media", tags=["Media"])
+api_router.include_router(deployment_router, prefix="/deploy", tags=["Deploy"])
 
 app.include_router(api_router) #Подключение к главному роуту
 
