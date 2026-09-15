@@ -230,13 +230,20 @@
 
 .videoInfo {
     padding: 6px 15px 15px;
-    display: flex;
-    align-items: stretch;
-    gap: 14px;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas:
+        "thumbnail platform"
+        "thumbnail title"
+        "thumbnail meta";
+    align-items: center;
+    column-gap: 14px;
+    row-gap: 8px;
     flex-shrink: 0;
 }
 
 .videoThumbnail {
+    grid-area: thumbnail;
     width: auto;
     height: auto;
     max-width: 38%;
@@ -248,17 +255,15 @@
     background: var(--bg-muted);
 }
 
-.videoDetails {
+.videoPlatform {
+    grid-area: platform;
     display: flex;
-    flex: 1;
     min-width: 0;
-    flex-direction: column;
-    justify-content: center;
     align-items: flex-start;
-    gap: 8px;
 }
 
 .videoTitle {
+    grid-area: title;
     font-family: var(--font-heading);
     font-weight: 700;
     font-size: 18px;
@@ -274,6 +279,7 @@
 }
 
 .videoMeta {
+    grid-area: meta;
     display: flex;
     align-items: center;
     gap: 16px;
@@ -855,6 +861,33 @@ button:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
     .guideStep { min-height: 0; }
     .stepArrow { width: 24px; height: 24px; justify-self: center; transform: rotate(90deg); }
     .platforms { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 600px) {
+    .videoInfo {
+        grid-template-areas:
+            "thumbnail platform"
+            "thumbnail meta"
+            "title title";
+        align-items: start;
+        row-gap: 9px;
+    }
+
+    .videoThumbnail {
+        max-width: 34vw;
+        max-height: 96px;
+    }
+
+    .videoMeta {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 7px;
+    }
+
+    .videoTitle {
+        -webkit-line-clamp: 3;
+        line-clamp: 3;
+    }
 }
 
 @media (max-width: 520px) {

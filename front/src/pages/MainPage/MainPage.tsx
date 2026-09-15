@@ -124,30 +124,30 @@ export default function MainPage() {
                     }}
                   />
                 )}
-                <div className={styles.videoDetails}>
+                <div className={styles.videoPlatform}>
                   <PlatformBadge
                     compact
                     platform={{ id: videoData.platform, name: videoData.platform_name }}
                   />
-                  <div className={styles.videoTitle}>{videoData.title}</div>
-                  <div className={styles.videoMeta}>
-                    {videoData.views && (
-                      <div className={styles.metaItem}>
-                        <SvgIcon className={styles.metaIcon} svg={visibilityIcon} />
-                        <span>{videoData.views}</span>
-                      </div>
-                    )}
+                </div>
+                <div className={styles.videoTitle}>{videoData.title}</div>
+                <div className={styles.videoMeta}>
+                  {videoData.views && (
                     <div className={styles.metaItem}>
-                      <SvgIcon className={styles.metaIcon} svg={personIcon} />
-                      <span>{videoData.uploader}</span>
+                      <SvgIcon className={styles.metaIcon} svg={visibilityIcon} />
+                      <span>{videoData.views}</span>
                     </div>
-                    {videoData.duration && (
-                      <div className={styles.metaItem}>
-                        <SvgIcon className={styles.metaIcon} svg={scheduleIcon} />
-                        <span>{videoData.duration}</span>
-                      </div>
-                    )}
+                  )}
+                  <div className={styles.metaItem}>
+                    <SvgIcon className={styles.metaIcon} svg={personIcon} />
+                    <span>{videoData.uploader}</span>
                   </div>
+                  {videoData.duration && (
+                    <div className={styles.metaItem}>
+                      <SvgIcon className={styles.metaIcon} svg={scheduleIcon} />
+                      <span>{videoData.duration}</span>
+                    </div>
+                  )}
                 </div>
               </div>
 
