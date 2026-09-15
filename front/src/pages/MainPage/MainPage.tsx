@@ -8,7 +8,7 @@ import scheduleIcon from '../../assets/icons/schedule.svg?raw'
 import searchIcon from '../../assets/icons/search.svg?raw'
 import stopIcon from '../../assets/icons/stop.svg?raw'
 import visibilityIcon from '../../assets/icons/visibility.svg?raw'
-import ServiceGuide, { PlatformBadge } from './ServiceGuide'
+import ServiceGuide, { PlatformIcon } from './ServiceGuide'
 
 function SvgIcon({ svg, className }: { svg: string; className?: string }) {
   return (
@@ -124,13 +124,6 @@ export default function MainPage() {
                     }}
                   />
                 )}
-                <div className={styles.videoPlatform}>
-                  <PlatformBadge
-                    compact
-                    platform={{ id: videoData.platform, name: videoData.platform_name }}
-                  />
-                </div>
-                <div className={styles.videoTitle}>{videoData.title}</div>
                 <div className={styles.videoMeta}>
                   {videoData.views && (
                     <div className={styles.metaItem}>
@@ -149,11 +142,18 @@ export default function MainPage() {
                     </div>
                   )}
                 </div>
+                <div className={styles.videoTitle}>{videoData.title}</div>
               </div>
 
               {videoData.formats.length > 0 && (
                 <div className={styles.qualitySection}>
-                  <div className={styles.qualityHeader}>Качество</div>
+                  <div className={styles.qualityHeading}>
+                    <div className={styles.qualityHeader}>Качество</div>
+                    <div className={styles.qualityPlatform}>
+                      <PlatformIcon platform={videoData.platform} />
+                      <span>{videoData.platform_name}</span>
+                    </div>
+                  </div>
                   <div className={styles.qualityList}>
                     {videoData.formats.map((format) => (
                       <button

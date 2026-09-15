@@ -233,10 +233,9 @@
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
     grid-template-areas:
-        "thumbnail platform"
-        "thumbnail title"
-        "thumbnail meta";
-    align-items: center;
+        "thumbnail meta"
+        "title title";
+    align-items: start;
     column-gap: 14px;
     row-gap: 8px;
     flex-shrink: 0;
@@ -246,20 +245,13 @@
     grid-area: thumbnail;
     width: auto;
     height: auto;
-    max-width: 38%;
-    max-height: 96px;
+    max-width: 220px;
+    max-height: 110px;
     flex-shrink: 0;
     border-radius: 13px;
     object-fit: contain;
     align-self: flex-start;
     background: var(--bg-muted);
-}
-
-.videoPlatform {
-    grid-area: platform;
-    display: flex;
-    min-width: 0;
-    align-items: flex-start;
 }
 
 .videoTitle {
@@ -281,8 +273,9 @@
 .videoMeta {
     grid-area: meta;
     display: flex;
-    align-items: center;
-    gap: 16px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
     color: var(--text-muted);
     font-size: 14px;
     font-weight: 600;
@@ -328,12 +321,43 @@
     flex: 1;
 }
 
-.qualityHeader {
+.qualityHeading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
     padding-bottom: 10px;
+}
+
+.qualityHeader {
     font-family: var(--font-heading);
     font-weight: 700;
     font-size: 18px;
     color: var(--text-main);
+}
+
+.qualityPlatform {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    min-width: 0;
+    gap: 7px;
+    color: var(--text-accent);
+    font-size: 14px;
+    font-weight: 750;
+    line-height: 1.25;
+}
+
+.qualityPlatform .platformIcon {
+    width: 18px;
+    height: 18px;
+    flex-basis: 18px;
+}
+
+.qualityPlatform span:last-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .qualityList {
@@ -627,8 +651,11 @@
     }
 
     .qualityHeader {
-        padding-bottom: 8px;
         font-size: 16px;
+    }
+
+    .qualityHeading {
+        padding-bottom: 8px;
     }
 
     .qualityList {
@@ -864,24 +891,9 @@ button:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
 }
 
 @media (max-width: 600px) {
-    .videoInfo {
-        grid-template-areas:
-            "thumbnail platform"
-            "thumbnail meta"
-            "title title";
-        align-items: start;
-        row-gap: 9px;
-    }
-
     .videoThumbnail {
         max-width: 34vw;
         max-height: 96px;
-    }
-
-    .videoMeta {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 7px;
     }
 
     .videoTitle {
