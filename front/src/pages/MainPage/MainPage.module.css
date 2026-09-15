@@ -909,8 +909,8 @@ button:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
 
     .videoThumbnail {
         grid-area: thumbnail;
-        height: 96px;
-        max-width: 170px;
+        height: 65px;
+        max-width: 116px;
         align-self: start;
     }
 
