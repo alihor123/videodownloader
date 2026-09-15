@@ -254,6 +254,7 @@
     min-width: 0;
     flex-direction: column;
     justify-content: center;
+    align-self: flex-end;
     gap: 10px;
 }
 
@@ -917,7 +918,7 @@ button:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
         grid-area: meta;
         flex-direction: column;
         align-items: flex-start;
-        align-self: center;
+        align-self: end;
         gap: 8px;
     }
 
