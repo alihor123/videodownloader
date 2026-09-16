@@ -55,6 +55,50 @@ pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
+### YouTube PO Token provider
+
+Python-плагин устанавливается из `back/requirements.txt`. Генератор токенов работает
+отдельным локальным Node.js-процессом.
+
+Один раз установи provider на production-сервере:
+
+```bash
+sudo git clone --single-branch --branch 2.0.0 \
+  https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git \
+  /opt/bgutil-ytdlp-pot-provider
+cd /opt/bgutil-ytdlp-pot-provider/server
+sudo npm ci
+sudo npx tsc
+sudo chown -R www-data:www-data /opt/bgutil-ytdlp-pot-provider
+
+sudo cp /srv/apps/videodownloader/repo/back/deploy/bgutil-pot-provider.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now bgutil-pot-provider
+systemctl is-active bgutil-pot-provider
+```
+
+Provider слушает только `127.0.0.1:4416`. Не публикуй этот порт через nginx или firewall.
+
+Для локальной разработки на Windows клонируй тот же release, собери его и запускай
+в отдельном терминале:
+
+```powershell
+git clone --single-branch --branch 2.0.0 `
+  https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git `
+  "$env:USERPROFILE\bgutil-ytdlp-pot-provider"
+Set-Location "$env:USERPROFILE\bgutil-ytdlp-pot-provider\server"
+npm.cmd ci
+npx.cmd tsc
+node build/main.js --host 127.0.0.1 --port 4416
+```
+
+Проверка должна показать внешний provider `bgutil:http`:
+
+```bash
+/srv/apps/videodownloader/repo/back/venv/bin/python -m yt_dlp -v --simulate \
+  "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+```
+
 ## 4) Backend `.env`
 
 ```bash
@@ -129,7 +173,8 @@ POST http://127.0.0.1:8000/api/media/info с JSON `{"url":"<video_url>"}`
 ```ini
 [Unit]
 Description=videodownloader backend
-After=network.target
+Wants=bgutil-pot-provider.service
+After=network.target bgutil-pot-provider.service
 
 [Service]
 Type=simple
@@ -274,4 +319,5 @@ curl -sS -X POST "http://127.0.0.1:8000/api/media/info" -H "Content-Type: applic
   Убедись, что зависимости установлены из `back/requirements.txt`: TikTok использует
   `curl-cffi` для имитации браузера, и cookies не заменяют этот пакет.
 - Зависания на YouTube:
-  Используй IPv4 в `yt-dlp` (`source_address: "0.0.0.0"` в Python API).
+  Проверь IPv6-маршрут и `systemctl status bgutil-pot-provider`. Платформы с IPv6
+  перечислены в `back/services/media_platforms.py`.

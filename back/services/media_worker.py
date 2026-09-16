@@ -14,7 +14,7 @@ from services.media_formats import (
     select_fast_format,
 )
 from services.ytdlp_service import (
-    extract_info, get_download_ydl_opts, get_info_ydl_opts, get_youtube_fast_info_ydl_opts,
+    extract_info, get_download_ydl_opts, get_info_ydl_opts,
 )
 
 platform_id = None
@@ -132,9 +132,7 @@ def main():
             progress = min(98, round(98 * data.get("downloaded_bytes", 0) / total)) if total else None
             emit("progress", stage="downloading_file", progress=progress)
 
-    if payload["mode"] == "fast" and platform["id"] == "youtube":
-        opts = get_youtube_fast_info_ydl_opts()
-    elif payload["mode"] in {"info", "fast"}:
+    if payload["mode"] in {"info", "fast"}:
         opts = get_info_ydl_opts()
     else:
         kind = payload.get("kind", "video")
@@ -151,7 +149,7 @@ def main():
                  "max_filesize": payload["max_bytes"], "source_address": source_address})
     # YouTube-специфичные настройки не переносим автоматически на другие сайты.
     if platform["id"] != "youtube":
-        for key in ("cookiefile", "extractor_args", "remote_components", "js_runtimes"):
+        for key in ("cookiefile", "extractor_args", "js_runtimes"):
             opts.pop(key, None)
     cookie_file = get_platform_cookie_file(platform["id"])
     if cookie_file and not (platform["id"] == "youtube" and payload["mode"] == "fast"):

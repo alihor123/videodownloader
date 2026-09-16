@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     tiktok_cookies_file: Path | None = BASE_DIR / "cookies" / "tiktok.txt"
     # Cookie-файл Instagram.
     instagram_cookies_file: Path | None = BASE_DIR / "cookies" / "instagram.txt"
-    # YouTube PO token, если настроен.
+    # Старое поле оставлено для совместимости с production .env; provider получает токены сам.
     ytdlp_po_token: str | None = None
     # Публиковать ли Swagger-документацию.
     enable_docs: bool = False

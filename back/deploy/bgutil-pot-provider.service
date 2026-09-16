@@ -1,0 +1,18 @@
+[Unit]
+Description=YouTube PO Token provider
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/bgutil-ytdlp-pot-provider/server
+ExecStart=/usr/bin/node build/main.js --host 127.0.0.1 --port 4416
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

@@ -9,31 +9,19 @@ from services.media_formats import (
 )
 
 
-# Android-клиент чаще отдаёт цельный 360p MP4, пригодный для fast-скачивания.
-YOUTUBE_EXTRACTOR_ARGS = {"youtube": {}}
-if settings.ytdlp_po_token:
-    YOUTUBE_EXTRACTOR_ARGS["youtube"]["po_token"] = [f"web+{settings.ytdlp_po_token}"]
-
 YDL_COMMON_OPTS = {
     "quiet": True,
     "no_warnings": True,
     "socket_timeout": 20,
     "retries": 1,
-    # Node нужен yt-dlp для YouTube JS challenge (sig/n), особенно с cookies.
+    # Node запускает EJS из зависимости yt-dlp[default].
     "js_runtimes": {"node": {}},
-    "remote_components": ["ejs:github"],
+    "extractor_args": {"youtube": {"player_client": ["mweb"]}},
 }
-if YOUTUBE_EXTRACTOR_ARGS["youtube"]:
-    YDL_COMMON_OPTS["extractor_args"] = YOUTUBE_EXTRACTOR_ARGS
 
 
 def get_info_ydl_opts():
     return YDL_COMMON_OPTS.copy()
-
-
-def get_youtube_fast_info_ydl_opts():
-    """Android-клиент чаще отдаёт цельный MP4, пригодный для fast-скачивания."""
-    return {**YDL_COMMON_OPTS, "extractor_args": {"youtube": {"player_client": ["android"]}}}
 
 
 def get_download_ydl_opts(height, file_ext, download_path, progress_hook, kind="video"):

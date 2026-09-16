@@ -15,4 +15,6 @@ typing_extensions==4.15.0
 uvicorn==0.46.0
 # Extra ставит curl-cffi: TikTok использует его для browser impersonation.
 yt-dlp[default,curl-cffi]==2026.8.19
+# Автоматически получает YouTube PO Token у локального bgutil-provider.
+bgutil-ytdlp-pot-provider==2.0.0
 aiosqlite==0.21.0

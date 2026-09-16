@@ -22,6 +22,7 @@ from services.media_worker import (
     get_platform_cookie_file, get_user_error, probe_fast_source,
     should_retry_without_youtube_cookies,
 )
+from services.ytdlp_service import get_info_ydl_opts
 
 
 async def wait_for_condition(condition, timeout):
@@ -58,6 +59,11 @@ def process_alive(pid):
 
 
 class PlatformsTest(unittest.TestCase):
+    def test_youtube_uses_mweb_with_local_ejs(self):
+        options = get_info_ydl_opts()
+        self.assertEqual(options["extractor_args"]["youtube"]["player_client"], ["mweb"])
+        self.assertNotIn("remote_components", options)
+
     def test_fractional_duration_from_twitter(self):
         self.assertEqual(format_duration(12.85), "0:12")
         self.assertEqual(format_duration(3661.5), "1:01:01")
