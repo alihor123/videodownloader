@@ -10,7 +10,7 @@ import httpx
 from config import settings
 from services.media_platforms import detect_platform, normalize_platform_url
 from services.media_formats import (
-    build_format_list, format_duration, format_views, get_fast_format_heights, get_output_ext, get_safe_title,
+    build_format_list, format_duration, format_views, get_output_ext, get_safe_title,
     select_fast_format,
 )
 from services.ytdlp_service import (
@@ -186,18 +186,7 @@ def main():
     if not info or info.get("_type") in {"playlist", "multi_video"} or info.get("is_live"):
         raise ValueError("Нужна ссылка на отдельное опубликованное видео")
     if payload["mode"] == "info":
-        fast_heights = ()
-        if platform["id"] == "youtube":
-            try:
-                fast_opts = get_youtube_fast_info_ydl_opts()
-                fast_opts.update({"logger": Logger(), "quiet": True, "noprogress": True,
-                                  "noplaylist": True, "cachedir": False, "playlistend": 1,
-                                  "allowed_extractors": ["youtube"], "match_filter": reject_live})
-                fast_heights = get_fast_format_heights(extract_info(source_url, fast_opts))
-            except DownloadError:
-                # Fast — необязательное ускорение: список обычных качеств остаётся доступен.
-                pass
-        formats = build_format_list(info, fast_heights)
+        formats = build_format_list(info)
         if not formats:
             raise ValueError("Нет доступных форматов для скачивания")
         # Все загрузки проходят через управляемый worker, включая цельные MP4.
