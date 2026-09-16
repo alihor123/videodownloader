@@ -8,7 +8,7 @@ from pathlib import Path
 import httpx
 
 from config import settings
-from services.media_platforms import IPV6_PLATFORMS, detect_platform, normalize_platform_url
+from services.media_platforms import detect_platform, normalize_platform_url
 from services.media_formats import (
     build_format_list, format_duration, format_views, get_output_ext, get_safe_title,
     select_fast_format,
@@ -117,7 +117,8 @@ def main():
     payload = json.loads(sys.stdin.readline())
     platform = detect_platform(payload["url"])
     platform_id = platform["id"]
-    source_address = "::" if platform_id in IPV6_PLATFORMS else "0.0.0.0"
+    # У сервера нет надёжного IPv6-маршрута: все запросы платформ идут через IPv4.
+    source_address = "0.0.0.0"
     source_url = normalize_platform_url(payload["url"], platform)
     last_progress = 0
 
