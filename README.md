@@ -71,13 +71,21 @@ sudo npm ci
 sudo npx tsc
 sudo chown -R www-data:www-data /opt/bgutil-ytdlp-pot-provider
 
-sudo cp /srv/apps/videodownloader/repo/back/deploy/bgutil-pot-provider.service /etc/systemd/system/
+sudo install -m 0644 \
+  /opt/videodownloader-release/back/deploy/bgutil-pot-provider.service \
+  /etc/systemd/system/bgutil-pot-provider.service
 sudo systemctl daemon-reload
 sudo systemctl enable --now bgutil-pot-provider
 systemctl is-active bgutil-pot-provider
 ```
 
 Provider слушает только `127.0.0.1:4416`. Не публикуй этот порт через nginx или firewall.
+
+GitHub webhook автоматически устанавливает Python-плагин при изменении
+`back/requirements.txt` и перезапускает backend. Сам Node-provider устанавливается
+один раз командами выше и дальше запускается systemd после перезагрузки сервера.
+При обновлении версии provider отдельно обнови каталог `/opt/bgutil-ytdlp-pot-provider`,
+пересобери его через `npm ci && npx tsc` и перезапусти `bgutil-pot-provider`.
 
 Для локальной разработки на Windows клонируй тот же release, собери его и запускай
 в отдельном терминале:
@@ -95,7 +103,7 @@ node build/main.js --host 127.0.0.1 --port 4416
 Проверка должна показать внешний provider `bgutil:http`:
 
 ```bash
-/srv/apps/videodownloader/repo/back/venv/bin/python -m yt_dlp -v --simulate \
+/opt/videodownloader-release/back/venv/bin/python -m yt_dlp -v --simulate \
   "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 ```
 
