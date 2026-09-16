@@ -1,6 +1,7 @@
 """Выбор исходящего IP для задач медиа без хранения секретов в самих задачах."""
 from random import shuffle
 from time import monotonic
+from urllib.parse import urlsplit
 
 from config import settings
 
@@ -68,6 +69,14 @@ def get_proxy_url(key: str | None) -> str | None:
     if key is None:
         return None
     return proxy_urls[key]
+
+
+def get_proxy_endpoint(key: str | None) -> str:
+    """Возвращает адрес для статистики, не раскрывая логин и пароль прокси."""
+    if key in {None, "main"}:
+        return "main"
+    parsed = urlsplit(get_proxy_url(key))
+    return f"{parsed.scheme}://{parsed.hostname}:{parsed.port}"
 
 
 def put_on_cooldown(key: str) -> None:

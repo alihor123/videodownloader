@@ -76,6 +76,20 @@ def is_proxy_or_ip_error(error):
     ))
 
 
+def get_proxy_error_kind(error):
+    """Короткая причина для статистики; исходный текст yt-dlp не сохраняем."""
+    reason = str(error).lower()
+    if "http error 429" in reason or "too many requests" in reason:
+        return "http_429"
+    if "http error 403" in reason:
+        return "http_403"
+    if any(phrase in reason for phrase in ("sign in to confirm", "not a bot", "ip address is blocked")):
+        return "bot_check"
+    if "timed out" in reason or "timeout" in reason:
+        return "timeout"
+    return "connection_error"
+
+
 def get_platform_cookie_file(platform_id):
     """Возвращает cookie-файл только той платформы, которую обрабатывает worker."""
     cookie_files = {
@@ -249,5 +263,6 @@ if __name__ == "__main__":
         main()
     except Exception as error:
         emit("error", message=get_user_error(error, platform_id),
-             proxy_error=is_proxy_or_ip_error(error))
+             proxy_error=is_proxy_or_ip_error(error),
+             proxy_error_kind=get_proxy_error_kind(error))
         sys.exit(1)

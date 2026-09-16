@@ -13,6 +13,7 @@ from uuid import UUID, uuid4
 from fastapi import HTTPException
 
 from config import BASE_DIR, settings
+from database.db_tools import add_proxy_info_success, add_proxy_ip_error
 from services.media_platforms import detect_platform
 from services.process_tree import WindowsJob, stop_process_tree
 from services.media_messages import get_stage_message
@@ -55,6 +56,7 @@ class MediaTask:
     proxy_key: str | None = None
     proxy_attempts: int = 0
     retry_with_another_proxy: bool = False
+    proxy_error_kind: str | None = None
 
     @property
     def directory(self):
@@ -236,6 +238,7 @@ async def read_events(process, task):
         elif event.get("event") == "error":
             error_message = event["message"]
             task.retry_with_another_proxy = event.get("proxy_error", False)
+            task.proxy_error_kind = event.get("proxy_error_kind")
     await process.wait()
     if process.returncode or result is None:
         raise RuntimeError(error_message)
@@ -334,6 +337,13 @@ async def run_task(task):
         # Иначе HTTP-ответ мог бы начать читать файл одновременно с очисткой.
         succeeded = True
     except Exception as error:
+        if task.retry_with_another_proxy:
+            try:
+                operation = "info" if task.mode == "info" else "download"
+                await add_proxy_ip_error(task.proxy_key, task.platform, operation,
+                                         task.proxy_error_kind or "connection_error")
+            except Exception:
+                logger.exception("Cannot save proxy error statistics for task %s", task.id)
         if task.retry_with_another_proxy and task.proxy_attempts < max_proxy_attempts() and not task.cancel.is_set():
             put_on_cooldown(task.proxy_key)
             task.proxy_key = None
@@ -365,6 +375,11 @@ async def run_task(task):
             task.status = task.stage = "ready"
             task.progress = 100
             task.ready_at = time.monotonic()
+            if task.mode == "info":
+                try:
+                    await add_proxy_info_success(task.proxy_key, task.platform)
+                except Exception:
+                    logger.exception("Cannot save proxy info statistics for task %s", task.id)
         if task.status != "ready" or task.mode == "info" or task.delivery_mode == "fast":
             cleanup_directory(task)
         elif task.directory.exists():

@@ -300,8 +300,10 @@ class CancellationTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_info_post_returns_result_once_and_cleans_task(self):
         task_id = str(uuid4())
-        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
-            result = await client.post("/api/media/info", json={"url": "https://youtu.be/ready", "task_id": task_id})
+        with patch("services.media_tasks.add_proxy_info_success", new_callable=AsyncMock) as stats:
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                result = await client.post("/api/media/info", json={"url": "https://youtu.be/ready", "task_id": task_id})
+            stats.assert_awaited_once()
         self.assertEqual(result.status_code, 200)
         self.assertEqual(result.json()["filename"], "output.mp4")
         self.assertNotIn(task_id.replace("-", ""), manager.TASKS)
@@ -417,9 +419,11 @@ class CancellationTest(unittest.IsolatedAsyncioTestCase):
         async def send(message):
             body.extend(message.get("body", b""))
 
-        with patch("routers.media_router.add_download_stat", new_callable=AsyncMock) as stats:
+        with patch("routers.media_router.add_download_stat", new_callable=AsyncMock) as stats, \
+             patch("routers.media_router.add_proxy_download_success", new_callable=AsyncMock) as proxy_stats:
             await response({"type": "http", "asgi": {"spec_version": "2.4"}}, AsyncMock(), send)
             stats.assert_awaited_once()
+            proxy_stats.assert_awaited_once()
         self.assertEqual(len(body), 500000)
         self.assertEqual(task.status, "completed")
         self.assertFalse(task.directory.exists())
@@ -479,7 +483,8 @@ class CancellationTest(unittest.IsolatedAsyncioTestCase):
             await release.wait()
             await original_stop(process, job)
 
-        with patch.object(manager, "stop_process_tree", delayed_stop):
+        with patch.object(manager, "stop_process_tree", delayed_stop), \
+             patch.object(manager, "add_proxy_info_success", new_callable=AsyncMock):
             task = manager.create_task("https://youtu.be/ready", mode="info")
             await asyncio.wait_for(entered.wait(), 5)
             self.assertEqual(task.status, "running")

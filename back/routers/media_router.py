@@ -10,7 +10,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from config import settings
-from database.db_tools import add_download_stat
+from database.db_tools import add_download_stat, add_proxy_download_success
 from services.media_platforms import detect_platform
 from services.media_tasks import (
     cancel_task, cleanup_directory, create_task, get_task, serialize_task,
@@ -134,6 +134,7 @@ class ManagedFileResponse(StreamingResponse):
             try:
                 await add_download_stat(ip=task.ip, user_agent=task.user_agent, video_url=task.url,
                                         format_value=task.height, file_ext=task.result["filename"].rsplit(".", 1)[-1])
+                await add_proxy_download_success(task.proxy_key, task.platform)
             except Exception:
                 logging.getLogger(__name__).exception("Cannot save download statistics")
 
@@ -198,6 +199,7 @@ class ManagedFastResponse(StreamingResponse):
             try:
                 await add_download_stat(ip=task.ip, user_agent=task.user_agent, video_url=task.url,
                                         format_value=task.height, file_ext=task.result.get("ext", "mp4"))
+                await add_proxy_download_success(task.proxy_key, task.platform)
             except Exception:
                 logging.getLogger(__name__).exception("Cannot save download statistics")
 
