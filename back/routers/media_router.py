@@ -15,6 +15,7 @@ from services.media_platforms import detect_platform
 from services.media_tasks import (
     cancel_task, cleanup_directory, create_task, get_task, serialize_task,
 )
+from services.proxy_pool import get_proxy_url
 from services.rate_limiter import RateLimiter
 from services.media_formats import build_content_disposition
 
@@ -155,12 +156,13 @@ class ManagedFastResponse(StreamingResponse):
             media_type = "application/octet-stream"
         if result.get("filesize"):
             response_headers["Content-Length"] = str(result["filesize"])
-        super().__init__(self.chunks(result["url"], headers, result.get("source_address")), media_type=media_type,
+        super().__init__(self.chunks(result["url"], headers, result.get("source_address"),
+                                     get_proxy_url(task.proxy_key)), media_type=media_type,
                          headers=response_headers)
 
-    async def chunks(self, url, headers, source_address):
+    async def chunks(self, url, headers, source_address, proxy_url):
         timeout = httpx.Timeout(settings.media_task_timeout_sec)
-        transport = httpx.AsyncHTTPTransport(local_address=source_address) if source_address else None
+        transport = httpx.AsyncHTTPTransport(local_address=source_address, proxy=proxy_url)
         async with httpx.AsyncClient(follow_redirects=True, timeout=timeout, transport=transport) as client:
             async with client.stream("GET", url, headers=headers) as response:
                 response.raise_for_status()

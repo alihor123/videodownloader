@@ -16,6 +16,9 @@ from config import BASE_DIR, settings
 from services.media_platforms import detect_platform
 from services.process_tree import WindowsJob, stop_process_tree
 from services.media_messages import get_stage_message
+from services.proxy_pool import (
+    get_proxy_key, get_proxy_url, max_proxy_attempts, put_on_cooldown,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -49,6 +52,9 @@ class MediaTask:
     user_agent: str | None = None
     queue_name: str = "file"
     fallback_requested: bool = False
+    proxy_key: str | None = None
+    proxy_attempts: int = 0
+    retry_with_another_proxy: bool = False
 
     @property
     def directory(self):
@@ -229,6 +235,7 @@ async def read_events(process, task):
             result = event["data"]
         elif event.get("event") == "error":
             error_message = event["message"]
+            task.retry_with_another_proxy = event.get("proxy_error", False)
     await process.wait()
     if process.returncode or result is None:
         raise RuntimeError(error_message)
@@ -252,8 +259,9 @@ async def queue_worker(queue_name):
             task.status = task.stage = "running"
             task.runner = asyncio.create_task(run_task(task), name=f"media-{task.id}")
             await task.runner
-            if task.fallback_requested and not task.cancel.is_set():
+            if (task.fallback_requested or task.retry_with_another_proxy) and not task.cancel.is_set():
                 task.fallback_requested = False
+                task.retry_with_another_proxy = False
                 requeue = True
         except asyncio.QueueFull:
             task.status = task.stage = "failed"
@@ -269,7 +277,7 @@ async def queue_worker(queue_name):
             task.runner = None
         if requeue:
             try:
-                QUEUES["file"].put_nowait(task)
+                QUEUES[task.queue_name].put_nowait(task)
             except asyncio.QueueFull:
                 task.status = task.stage = "failed"
                 task.error = "Очередь переполнена"
@@ -284,6 +292,9 @@ async def run_task(task):
         if task.cancel.is_set():
             return
         task.status, task.stage = "running", "preparing"
+        if task.proxy_key is None:
+            task.proxy_key = get_proxy_key()
+            task.proxy_attempts += 1
         task.directory.mkdir(parents=True, exist_ok=False)
         # На Linux отдельная session включает yt-dlp, ffmpeg и JS runtime.
         process = await asyncio.create_subprocess_exec(
@@ -299,7 +310,8 @@ async def run_task(task):
         payload = {"url": task.url,
                    "mode": "fast" if task.requested_fast else task.mode,
                    "height": task.height, "kind": task.format_kind,
-                   "directory": str(task.directory), "max_bytes": settings.media_max_bytes}
+                   "directory": str(task.directory), "max_bytes": settings.media_max_bytes,
+                   "proxy": get_proxy_url(task.proxy_key)}
         process.stdin.write((json.dumps(payload) + "\n").encode())
         await process.stdin.drain()
         process.stdin.close()
@@ -322,13 +334,20 @@ async def run_task(task):
         # Иначе HTTP-ответ мог бы начать читать файл одновременно с очисткой.
         succeeded = True
     except Exception as error:
-        if task.fallback_requested and task.requested_fast and not task.cancel.is_set():
+        if task.retry_with_another_proxy and task.proxy_attempts < max_proxy_attempts() and not task.cancel.is_set():
+            put_on_cooldown(task.proxy_key)
+            task.proxy_key = None
+            task.status = task.stage = "queued"
+            task.error = None
+            rescheduled = True
+        elif task.fallback_requested and task.requested_fast and not task.cancel.is_set():
             task.requested_fast = False
             task.delivery_mode = task.queue_name = "file"
             task.status = task.stage = "queued"
             task.error = None
             rescheduled = True
         else:
+            task.retry_with_another_proxy = False
             logger.warning("Media task %s failed: %s", task.id, error)
             task.status = task.stage = "failed"
         task.error = str(error) if isinstance(error, (RuntimeError, TimeoutError)) else "Не удалось обработать видео"

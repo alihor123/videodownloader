@@ -125,6 +125,9 @@ VK_COOKIES_FILE=/srv/apps/videodownloader/shared/cookies/vk.txt
 TWITTER_COOKIES_FILE=/srv/apps/videodownloader/shared/cookies/twitter.txt
 TIKTOK_COOKIES_FILE=/srv/apps/videodownloader/shared/cookies/tiktok.txt
 INSTAGRAM_COOKIES_FILE=/srv/apps/videodownloader/shared/cookies/instagram.txt
+# Через запятую; не добавляй эту строку в Git.
+MEDIA_PROXIES=socks5://login:password@host:port,socks5://login:password@host:port
+MEDIA_PROXY_COOLDOWN_SEC=1800
 INFO_RATE_LIMIT_REQUESTS=20
 INFO_RATE_LIMIT_PERIOD_SEC=60
 FAST_DOWNLOAD_RATE_LIMIT_REQUESTS=10
@@ -153,6 +156,13 @@ Cookie-файлы необязательны. Для каждой платфор
 `<SERVICE>_COOKIES_FILE` (`YOUTUBE`, `RUTUBE`, `VK`, `TWITTER`, `TIKTOK`, `INSTAGRAM`).
 Если путь пустой или файла нет, сервис запускается без cookies. Не клади cookies разных
 аккаунтов в один файл.
+
+`MEDIA_PROXIES` необязателен. Помимо указанных прокси сервис всегда использует прямой
+выход сервера (`main`) как ещё один вариант. На каждую операцию выбирается один IP: он
+используется для yt-dlp, проверки fast-формата и передачи fast-файла браузеру. При
+сетевой ошибке, 403/429 или антибот-блокировке IP уходит в cooldown, а задача один раз
+перезапускается с каждым оставшимся IP. Приватное, удалённое или недоступное видео не
+запускает такие повторы.
 
 Создай директорию под данные:
 
@@ -327,5 +337,5 @@ curl -sS -X POST "http://127.0.0.1:8000/api/media/info" -H "Content-Type: applic
   Убедись, что зависимости установлены из `back/requirements.txt`: TikTok использует
   `curl-cffi` для имитации браузера, и cookies не заменяют этот пакет.
 - Зависания на YouTube:
-  Проверь IPv6-маршрут и `systemctl status bgutil-pot-provider`. Платформы с IPv6
-  перечислены в `back/services/media_platforms.py`.
+  Проверь `systemctl status bgutil-pot-provider`. Сервер использует IPv4; не включай
+  IPv6-выход без рабочего IPv6-маршрута.

@@ -37,6 +37,10 @@ class Settings(BaseSettings):
     enable_docs: bool = False
     # Доверять ли X-Forwarded-For/X-Real-IP от reverse proxy.
     trust_proxy_headers: bool = False
+    # SOCKS5/HTTP-прокси через запятую. Значение — секрет, его не пишем в логи.
+    media_proxies: SecretStr | None = None
+    # Сколько секунд не используем IP после сетевой или антибот-ошибки.
+    media_proxy_cooldown_sec: int = 30 * 60
 
     # Лимит запросов информации на один IP.
     info_rate_limit_requests: int = 20

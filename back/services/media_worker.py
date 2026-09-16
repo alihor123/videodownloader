@@ -64,6 +64,18 @@ def get_user_error(error, platform_id):
     return "Источник не отдал видео. Попробуйте другую публичную ссылку"
 
 
+def is_proxy_or_ip_error(error):
+    """Менять IP имеет смысл только при сетевой или антибот-ошибке."""
+    reason = str(error).lower()
+    return any(phrase in reason for phrase in (
+        "ip address is blocked", "sign in to confirm", "not a bot",
+        "http error 403", "http error 429", "too many requests",
+        "proxy error", "proxy connection", "connection refused",
+        "connection reset", "connection aborted", "remote end closed",
+        "network is unreachable", "timed out", "timeout",
+    ))
+
+
 def get_platform_cookie_file(platform_id):
     """Возвращает cookie-файл только той платформы, которую обрабатывает worker."""
     cookie_files = {
@@ -96,12 +108,12 @@ def get_fast_headers(format_data):
             if key.lower() in allowed and value}
 
 
-def probe_fast_source(url, headers, source_address="0.0.0.0"):
+def probe_fast_source(url, headers, source_address="0.0.0.0", proxy_url=None):
     """Check that the direct source is still usable without downloading it."""
     request_headers = dict(headers or {})
     request_headers["Range"] = "bytes=0-0"
     timeout = httpx.Timeout(8.0)
-    transport = httpx.HTTPTransport(local_address=source_address)
+    transport = httpx.HTTPTransport(local_address=source_address, proxy=proxy_url)
     try:
         with httpx.Client(follow_redirects=True, timeout=timeout, transport=transport) as client:
             with client.stream("GET", url, headers=request_headers) as response:
@@ -119,6 +131,7 @@ def main():
     platform_id = platform["id"]
     # У сервера нет надёжного IPv6-маршрута: все запросы платформ идут через IPv4.
     source_address = "0.0.0.0"
+    proxy_url = payload.get("proxy")
     source_url = normalize_platform_url(payload["url"], platform)
     last_progress = 0
 
@@ -148,6 +161,8 @@ def main():
     opts.update({"logger": Logger(), "quiet": True, "noprogress": True,
                  "noplaylist": True, "cachedir": False, "playlistend": 1,
                  "max_filesize": payload["max_bytes"], "source_address": source_address})
+    if proxy_url:
+        opts["proxy"] = proxy_url
     # YouTube-специфичные настройки не переносим автоматически на другие сайты.
     if platform["id"] != "youtube":
         for key in ("cookiefile", "extractor_args", "js_runtimes"):
@@ -206,7 +221,7 @@ def main():
         ext = media_format.get("ext") or "mp4"
         title = get_safe_title(info)
         headers = get_fast_headers(media_format)
-        if not probe_fast_source(media_format["url"], headers, source_address):
+        if not probe_fast_source(media_format["url"], headers, source_address, proxy_url):
             emit("fallback", reason="Прямой поток недоступен")
             raise ValueError("Прямой поток недоступен")
         emit("result", data={
@@ -233,5 +248,6 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as error:
-        emit("error", message=get_user_error(error, platform_id))
+        emit("error", message=get_user_error(error, platform_id),
+             proxy_error=is_proxy_or_ip_error(error))
         sys.exit(1)
