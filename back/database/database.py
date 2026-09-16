@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 
 from fastapi import FastAPI
-from sqlalchemy import DateTime, String, Text
+from sqlalchemy import DateTime, Integer, String, Text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -34,13 +34,26 @@ class DownloadModel(Base):
     file_ext: Mapped[str | None] = mapped_column(String(16))
 
 
+class ProxyPlatformStatModel(Base):
+    __tablename__ = "proxy_platform_stats"
+
+    proxy_endpoint: Mapped[str] = mapped_column(Text, primary_key=True)
+    platform: Mapped[str] = mapped_column(String(32), primary_key=True)
+    info_success_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    download_success_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    info_ip_error_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    download_ip_error_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    last_info_success_at: Mapped[str | None] = mapped_column(Text)
+    last_download_success_at: Mapped[str | None] = mapped_column(Text)
+    last_ip_error_at: Mapped[str | None] = mapped_column(Text)
+    last_ip_error_kind: Mapped[str | None] = mapped_column(String(32))
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from services.media_tasks import start_tasks, shutdown_tasks
-    from database.migrations import run_migrations
 
     async with engine.begin() as conn:
-        await run_migrations(conn)
         await conn.run_sync(Base.metadata.create_all)
 
     reaper = await start_tasks()

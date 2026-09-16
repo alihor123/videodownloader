@@ -1,6 +1,11 @@
 import unittest
 from unittest.mock import patch
 
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+from database import db_tools
+from database.database import Base
 from services import proxy_pool
 
 
@@ -41,6 +46,29 @@ class ProxyPoolTest(unittest.TestCase):
         proxy_pool.put_on_cooldown("proxy_1")
 
         self.assertEqual(proxy_pool.get_proxy_key(), "main")
+
+
+class ProxyStatsTest(unittest.IsolatedAsyncioTestCase):
+    async def test_clean_database_creates_and_updates_proxy_statistics(self):
+        engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+        session_factory = async_sessionmaker(engine, expire_on_commit=False)
+        try:
+            async with engine.begin() as connection:
+                await connection.run_sync(Base.metadata.create_all)
+            with patch.object(db_tools, "new_session", session_factory), \
+                 patch.object(db_tools, "get_proxy_endpoint", return_value="socks5://68.209.58.216:8000"):
+                await db_tools.add_proxy_info_success("proxy_1", "youtube")
+                await db_tools.add_proxy_download_success("proxy_1", "youtube")
+                await db_tools.add_proxy_ip_error("proxy_1", "youtube", "download", "http_429")
+            async with session_factory() as session:
+                row = (await session.execute(text("""
+                    SELECT info_success_count, download_success_count, download_ip_error_count, last_ip_error_kind
+                    FROM proxy_platform_stats
+                """))).one()
+        finally:
+            await engine.dispose()
+
+        self.assertEqual(row, (1, 1, 1, "http_429"))
 
 
 if __name__ == "__main__":
