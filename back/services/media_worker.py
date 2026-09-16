@@ -112,7 +112,7 @@ def probe_fast_source(url, headers, source_address="0.0.0.0"):
 
 
 def main():
-    # Backend сначала закрепляет процесс в группе/Job, затем разрешает работу.
+    # Backend сначала закрепляет процесс в группе/Job, затем разрешает работу
     global platform_id
     payload = json.loads(sys.stdin.readline())
     platform = detect_platform(payload["url"])
