@@ -12,6 +12,9 @@ PLATFORMS = [
     {"id": "instagram", "name": "Instagram", "domains": ["instagram.com", "instagr.am"]},
 ]
 
+# Платформы, которые направляем через IPv6 сервера.
+IPV6_PLATFORMS = {"youtube", "instagram"}
+
 
 def detect_platform(url):
     """Проверяем настоящий hostname: youtube.com.example.org не подходит."""

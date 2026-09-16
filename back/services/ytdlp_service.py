@@ -17,7 +17,6 @@ if settings.ytdlp_po_token:
 YDL_COMMON_OPTS = {
     "quiet": True,
     "no_warnings": True,
-    "source_address": "0.0.0.0",
     "socket_timeout": 20,
     "retries": 1,
     # Node нужен yt-dlp для YouTube JS challenge (sig/n), особенно с cookies.

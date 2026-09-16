@@ -8,7 +8,7 @@ from pathlib import Path
 import httpx
 
 from config import settings
-from services.media_platforms import detect_platform, normalize_platform_url
+from services.media_platforms import IPV6_PLATFORMS, detect_platform, normalize_platform_url
 from services.media_formats import (
     build_format_list, format_duration, format_views, get_output_ext, get_safe_title,
     select_fast_format,
@@ -96,13 +96,14 @@ def get_fast_headers(format_data):
             if key.lower() in allowed and value}
 
 
-def probe_fast_source(url, headers):
+def probe_fast_source(url, headers, source_address="0.0.0.0"):
     """Check that the direct source is still usable without downloading it."""
     request_headers = dict(headers or {})
     request_headers["Range"] = "bytes=0-0"
     timeout = httpx.Timeout(8.0)
+    transport = httpx.HTTPTransport(local_address=source_address)
     try:
-        with httpx.Client(follow_redirects=True, timeout=timeout) as client:
+        with httpx.Client(follow_redirects=True, timeout=timeout, transport=transport) as client:
             with client.stream("GET", url, headers=request_headers) as response:
                 response.raise_for_status()
                 return bool(next(response.iter_bytes(64 * 1024), b""))
@@ -116,6 +117,7 @@ def main():
     payload = json.loads(sys.stdin.readline())
     platform = detect_platform(payload["url"])
     platform_id = platform["id"]
+    source_address = "::" if platform_id in IPV6_PLATFORMS else "0.0.0.0"
     source_url = normalize_platform_url(payload["url"], platform)
     last_progress = 0
 
@@ -146,7 +148,7 @@ def main():
             opts.setdefault("postprocessors", []).append({"key": "FFmpegVideoRemuxer", "preferedformat": "mp4"})
     opts.update({"logger": Logger(), "quiet": True, "noprogress": True,
                  "noplaylist": True, "cachedir": False, "playlistend": 1,
-                 "max_filesize": payload["max_bytes"]})
+                 "max_filesize": payload["max_bytes"], "source_address": source_address})
     # YouTube-специфичные настройки не переносим автоматически на другие сайты.
     if platform["id"] != "youtube":
         for key in ("cookiefile", "extractor_args", "remote_components", "js_runtimes"):
@@ -205,13 +207,14 @@ def main():
         ext = media_format.get("ext") or "mp4"
         title = get_safe_title(info)
         headers = get_fast_headers(media_format)
-        if not probe_fast_source(media_format["url"], headers):
+        if not probe_fast_source(media_format["url"], headers, source_address):
             emit("fallback", reason="Прямой поток недоступен")
             raise ValueError("Прямой поток недоступен")
         emit("result", data={
             "delivery_mode": "fast",
             "url": media_format["url"],
             "headers": headers,
+            "source_address": source_address,
             "filename": f"{title}.{ext}",
             "media_type": mimetypes.guess_type(f"video.{ext}")[0] or "application/octet-stream",
             "title": title,

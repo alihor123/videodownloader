@@ -155,12 +155,13 @@ class ManagedFastResponse(StreamingResponse):
             media_type = "application/octet-stream"
         if result.get("filesize"):
             response_headers["Content-Length"] = str(result["filesize"])
-        super().__init__(self.chunks(result["url"], headers), media_type=media_type,
+        super().__init__(self.chunks(result["url"], headers, result.get("source_address")), media_type=media_type,
                          headers=response_headers)
 
-    async def chunks(self, url, headers):
+    async def chunks(self, url, headers, source_address):
         timeout = httpx.Timeout(settings.media_task_timeout_sec)
-        async with httpx.AsyncClient(follow_redirects=True, timeout=timeout) as client:
+        transport = httpx.AsyncHTTPTransport(local_address=source_address) if source_address else None
+        async with httpx.AsyncClient(follow_redirects=True, timeout=timeout, transport=transport) as client:
             async with client.stream("GET", url, headers=headers) as response:
                 response.raise_for_status()
                 async for chunk in response.aiter_bytes(256 * 1024):
