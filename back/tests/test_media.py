@@ -19,7 +19,7 @@ from services.media_platforms import detect_platform, normalize_platform_url
 from services.media_formats import build_format_list, format_duration, format_filesize, select_fast_format
 from services import process_tree
 from services.media_worker import (
-    get_platform_cookie_file, get_user_error, probe_fast_source,
+    get_download_progress, get_platform_cookie_file, get_user_error, probe_fast_source,
     should_retry_without_youtube_cookies,
 )
 from services.ytdlp_service import get_info_ydl_opts
@@ -59,6 +59,27 @@ def process_alive(pid):
 
 
 class PlatformsTest(unittest.TestCase):
+    def test_separate_video_and_audio_progress_never_resets(self):
+        requested_formats = [
+            {"format_id": "137", "vcodec": "avc1", "acodec": "none"},
+            {"format_id": "140", "vcodec": "none", "acodec": "mp4a"},
+        ]
+        video = {"filename": "output.f137.mp4", "downloaded_bytes": 50,
+                 "total_bytes": 100, "info_dict": {"requested_formats": requested_formats}}
+        stage, progress, file_name, track = get_download_progress(video, "", "file")
+        self.assertEqual((stage, progress), ("downloading_video", 25))
+
+        audio = {"filename": "output.f140.m4a", "downloaded_bytes": 50,
+                 "total_bytes": 100, "info_dict": {"requested_formats": requested_formats}}
+        stage, progress, _, track = get_download_progress(audio, file_name, track)
+        self.assertEqual((stage, progress), ("downloading_audio", 74))
+
+    def test_muxed_file_keeps_full_progress_range(self):
+        data = {"filename": "output.mp4", "downloaded_bytes": 50, "total_bytes": 100,
+                "info_dict": {"requested_formats": [{"format_id": "18"}]}}
+        stage, progress, _, _ = get_download_progress(data, "", "file")
+        self.assertEqual((stage, progress), ("downloading_file", 49))
+
     def test_youtube_uses_mweb_with_local_ejs(self):
         options = get_info_ydl_opts()
         self.assertEqual(options["extractor_args"]["youtube"]["player_client"], ["mweb"])

@@ -52,6 +52,7 @@ export default function MainPage() {
       ? `${downloadTask.message}${isDownloadRunning ? '...' : ''}`
       : 'Готов к скачиванию')
   const downloadProgress = Math.max(0, Math.min(100, downloadError ? 0 : downloadTask?.progress ?? 0))
+  const isMerging = isDownloadRunning && downloadTask?.stage === 'merging'
   const contentClass = `${styles.content} ${videoData ? styles.contentLoaded : ''}`
   const mainClass = `${styles.main} ${videoData ? styles.mainLoaded : ''}`
 
@@ -186,7 +187,7 @@ export default function MainPage() {
                   </div>
                   <div className={styles.downloadBar} aria-hidden="true">
                     <div
-                      className={styles.downloadBarFill}
+                      className={`${styles.downloadBarFill} ${isMerging ? styles.downloadBarFillMerging : ''}`}
                       style={{ width: `${downloadProgress}%` }}
                     />
                   </div>

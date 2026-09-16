@@ -137,6 +137,42 @@ def probe_fast_source(url, headers, source_address="0.0.0.0", proxy_url=None):
         return False
 
 
+def get_download_track(data, current_file, current_track):
+    """Определяет дорожку по имени временного файла из progress hook yt-dlp."""
+    requested_formats = data.get("info_dict", {}).get("requested_formats") or []
+    if len(requested_formats) < 2:
+        return "file", current_file, "file"
+
+    file_name = data.get("tmpfilename") or data.get("filename") or current_file
+    for media_format in requested_formats:
+        format_id = media_format.get("format_id")
+        if format_id and f".f{format_id}." in file_name:
+            if media_format.get("vcodec") not in {None, "none"}:
+                return "video", file_name, "video"
+            return "audio", file_name, "audio"
+
+    # У некоторых extractor'ов формат не попадает в имя файла. yt-dlp скачивает
+    # видео первым, поэтому новый второй файл считаем аудиодорожкой.
+    if file_name != current_file:
+        track = "audio" if current_track == "video" else "video"
+        return track, file_name, track
+    return current_track, file_name, current_track
+
+
+def get_download_progress(data, current_file, current_track):
+    """Возвращает этап и процент без сброса между видео и аудиодорожкой."""
+    track, current_file, current_track = get_download_track(data, current_file, current_track)
+    total = data.get("total_bytes") or data.get("total_bytes_estimate")
+    if track == "video":
+        stage, start, end = "downloading_video", 0, 50
+    elif track == "audio":
+        stage, start, end = "downloading_audio", 50, 98
+    else:
+        stage, start, end = "downloading_file", 0, 98
+    progress = start + round((end - start) * data.get("downloaded_bytes", 0) / total) if total else None
+    return stage, progress, current_file, current_track
+
+
 def main():
     # Backend сначала закрепляет процесс в группе/Job, затем разрешает работу
     global platform_id
@@ -147,18 +183,31 @@ def main():
     source_address = "0.0.0.0"
     proxy_url = payload.get("proxy")
     source_url = normalize_platform_url(payload["url"], platform)
-    last_progress = 0
+    last_progress_at = 0
+    last_reported_progress = 0
+    current_file = ""
+    current_track = "file"
 
     def progress_hook(data):
-        nonlocal last_progress
+        nonlocal last_progress_at, last_reported_progress, current_file, current_track
         status = data.get("status")
         if status == "started":
-            emit("progress", stage="decoding_audio" if data.get("postprocessor") == "ExtractAudio" else "merging", progress=99)
-        elif status == "downloading" and time.monotonic() - last_progress > 0.3:
-            last_progress = time.monotonic()
-            total = data.get("total_bytes") or data.get("total_bytes_estimate")
-            progress = min(98, round(98 * data.get("downloaded_bytes", 0) / total)) if total else None
-            emit("progress", stage="downloading_file", progress=progress)
+            stage = "decoding_audio" if data.get("postprocessor") == "ExtractAudio" else "merging"
+            last_reported_progress = 99
+            emit("progress", stage=stage, progress=99)
+        elif status in {"downloading", "finished"}:
+            stage, progress, current_file, current_track = get_download_progress(
+                data, current_file, current_track,
+            )
+            if status == "finished":
+                progress = 50 if current_track == "video" else 98
+            if progress is not None:
+                progress = max(last_reported_progress, min(98, progress))
+            if status == "finished" or time.monotonic() - last_progress_at > 0.3:
+                last_progress_at = time.monotonic()
+                if progress is not None:
+                    last_reported_progress = progress
+                emit("progress", stage=stage, progress=progress)
 
     if payload["mode"] in {"info", "fast"}:
         opts = get_info_ydl_opts()

@@ -543,6 +543,17 @@
     transition: width 220ms ease;
 }
 
+.downloadBarFillMerging {
+    animation: mergePulse 1.15s ease-in-out infinite;
+}
+
+@keyframes mergePulse {
+    50% {
+        box-shadow: 0 0 12px color-mix(in srgb, var(--primary) 78%, transparent);
+        opacity: 0.62;
+    }
+}
+
 .downloadButton {
     line-height: 1;
     flex-shrink: 0;
@@ -929,6 +940,7 @@ button:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
 
 @media (prefers-reduced-motion: reduce) {
     .searchButton, .qualityItem, .downloadButton, .downloadBarFill { transition: none; }
+    .downloadBarFillMerging { animation: none; }
 }
 
 @media (max-width: 520px) {
