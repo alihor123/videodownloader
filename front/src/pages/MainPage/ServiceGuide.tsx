@@ -72,7 +72,14 @@ function StepArrow() {
 
 export default function ServiceGuide() {
   return (
-    <section className={styles.guide} aria-label="Как скачать видео">
+    <section className={styles.guide} aria-labelledby="guide-title">
+      <div className={styles.guideIntro}>
+        <h1 id="guide-title">Скачать видео по ссылке</h1>
+        <p>
+          VideoLoader помогает скачать публичные видео с YouTube, Rutube, VK Видео, TikTok, Instagram и X / Twitter.
+          Вставьте ссылку, выберите качество — подготовим файл для загрузки.
+        </p>
+      </div>
       <div className={styles.guideHeader}>
         <h2>Как скачать видео</h2>
       </div>

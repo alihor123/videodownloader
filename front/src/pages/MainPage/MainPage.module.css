@@ -738,6 +738,27 @@
     line-height: 1.6;
 }
 
+.guideIntro {
+    max-width: 760px;
+    margin-bottom: 20px;
+}
+
+.guideIntro h1 {
+    margin: 0 0 8px;
+    color: var(--text-main);
+    font-family: var(--font-heading);
+    font-size: 20px;
+    font-weight: 800;
+    line-height: 1.2;
+}
+
+.guideIntro p {
+    color: var(--text-muted);
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.55;
+}
+
 .guideHeader,
 .platformsHeader {
     display: flex;
@@ -931,6 +952,9 @@ button:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
 
 @media (max-width: 520px) {
     .guide { padding: 18px 14px 20px; }
+    .guideIntro { margin-bottom: 18px; }
+    .guideIntro h1 { font-size: 18px; }
+    .guideIntro p { font-size: 12px; }
     .stepArrow { margin: 0; }
     .platformsHeader { margin-top: 24px; }
     .platforms { gap: 8px; }
