@@ -104,7 +104,7 @@ export default function ServiceGuide() {
           <PlatformBadge key={platform.id} platform={platform} />
         ))}
       </div>
-      <p className={styles.guideNote}>Доступность зависит от платформы; временами отдельные ссылки могут работать нестабильно.</p>
+      <p className={styles.guideNote}>Поддерживаются только публичные видео. Ролики с ограниченным доступом и возрастной плашкой скачать нельзя.</p>
     </section>
   )
 }
