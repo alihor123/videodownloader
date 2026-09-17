@@ -198,20 +198,26 @@ class PlatformsTest(unittest.TestCase):
             "https://rutube.ru/video/2f18c8153e2b589a2f895e81b400137e/",
         )
 
+    def test_age_restriction_has_a_clear_message(self):
+        message = get_user_error(
+            Exception("Sorry, this content is age-restricted"),
+            "youtube",
+        )
+        self.assertEqual(message, "Видео с возрастным ограничением пока нельзя скачать")
+
     def test_instagram_audience_restriction_has_a_clear_message(self):
         message = get_user_error(
             Exception("This content isn't available to everyone: It can't be seen by certain audiences."),
             "instagram",
         )
-        self.assertIn("ограничено по возрасту", message)
+        self.assertEqual(message, "Видео с ограниченным доступом скачать нельзя")
 
     def test_instagram_carousel_has_a_clear_message(self):
         message = get_user_error(
             ValueError("Нужна ссылка на отдельное опубликованное видео"),
             "instagram",
         )
-        self.assertIn("карусели", message)
-        self.assertIn("отдельный Reel", message)
+        self.assertEqual(message, "Нужна ссылка на одно видео, а не на подборку")
 
     def test_each_platform_uses_only_its_own_cookie_file(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -231,12 +237,12 @@ class PlatformsTest(unittest.TestCase):
         self.assertFalse(should_retry_without_youtube_cookies(error, "instagram", cookie_file))
         self.assertFalse(should_retry_without_youtube_cookies(error, "youtube", None))
 
-    def test_tiktok_browser_challenge_explains_missing_impersonation(self):
+    def test_tiktok_browser_challenge_has_a_short_message(self):
         message = get_user_error(
             Exception("Unexpected response from webpage request; impersonation unavailable"),
             "tiktok",
         )
-        self.assertIn("curl-cffi", message)
+        self.assertEqual(message, "TikTok временно не отвечает. Попробуйте позже")
 
     def test_domains_and_short_links(self):
         examples = {"https://youtu.be/a": "youtube", "https://www.youtube.com/shorts/a": "youtube",

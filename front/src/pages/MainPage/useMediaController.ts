@@ -12,13 +12,13 @@ import {
 } from '../../services/yt.api'
 
 const TASK_ERROR_MESSAGES = {
-  500: 'Не удалось подготовить скачивание. Попробуйте чуть позже.',
-  503: 'Сервер уже занят, попробуйте чуть позже.',
+  500: 'Не удалось подготовить скачивание. Попробуйте ещё раз.',
+  503: 'Сервис занят. Попробуйте через минуту.',
 }
 const MAX_POLL_NETWORK_ERRORS = 5
 const FINISHED_STATUSES = new Set<MediaTask['status']>(['completed', 'failed', 'cancelled'])
 const RUNNING_STATUSES = new Set<MediaTask['status']>(['queued', 'running', 'cancelling'])
-export const LOST_TASK_MESSAGE = 'Сервер был перезапущен, и эта задача больше не существует. Запустите скачивание заново.'
+export const LOST_TASK_MESSAGE = 'Сервис перезапустился. Запустите скачивание заново.'
 
 export function useMediaController() {
   const [searchQuery, setSearchQuery] = useState('')
@@ -69,7 +69,7 @@ export function useMediaController() {
       }
       return true
     } catch {
-      const message = 'Сервер не подтвердил отмену. Повторите её; без связи обработка остановится автоматически.'
+      const message = 'Не удалось отменить скачивание. Повторите попытку.'
       setDownloadError(message)
       setInfoError(message)
       return false

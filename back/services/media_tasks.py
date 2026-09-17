@@ -161,12 +161,12 @@ def create_task(url, height="720", mode="download", task_id=None, *, requested_f
         raise HTTPException(409, "Этот идентификатор задачи уже используется")
     active = sum(task.status not in TERMINAL for task in TASKS.values())
     if active >= settings.max_queue_total:
-        raise HTTPException(503, "Сервер уже занят, попробуйте чуть позже")
+        raise HTTPException(503, "Сервис занят. Попробуйте через минуту")
     ip_active = sum(task.status not in TERMINAL and task.ip == ip for task in TASKS.values())
     if ip_active >= settings.max_queue_per_ip:
-        raise HTTPException(429, "Too many tasks from this IP")
+        raise HTTPException(429, "Слишком много попыток. Попробуйте через минуту")
     if len(TASKS) >= settings.max_retained_media_tasks:
-        raise HTTPException(503, "Слишком много задач, попробуйте чуть позже")
+        raise HTTPException(503, "Сервис занят. Попробуйте через минуту")
     queue_name = "info" if mode == "info" else ("fast" if requested_fast else "file")
     task = MediaTask(task_id, url=url, height=str(height), mode=mode,
                      requested_fast=requested_fast,
@@ -188,7 +188,7 @@ async def cancel_task(task_id):
     task = TASKS.get(task_id)
     if task is None:
         if len(TASKS) >= settings.max_retained_media_tasks:
-            raise HTTPException(503, "Слишком много задач, попробуйте чуть позже")
+            raise HTTPException(503, "Сервис занят. Попробуйте через минуту")
         task = MediaTask(task_id)
         TASKS[task_id] = task
     if task.status == "completed":
@@ -225,7 +225,7 @@ async def cancel_task(task_id):
 
 async def read_events(process, task):
     result = None
-    error_message = "Источник не отдал видео. Возможно, нужны авторизация или другая ссылка"
+    error_message = "Не удалось получить видео. Попробуйте ещё раз"
     while line := await process.stdout.readline():
         event = json.loads(line)
         if event.get("event") == "progress" and not task.cancel.is_set():
@@ -268,7 +268,7 @@ async def queue_worker(queue_name):
                 requeue = True
         except asyncio.QueueFull:
             task.status = task.stage = "failed"
-            task.error = "Очередь переполнена"
+            task.error = "Сервис занят. Попробуйте через минуту"
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -283,7 +283,7 @@ async def queue_worker(queue_name):
                 QUEUES[task.queue_name].put_nowait(task)
             except asyncio.QueueFull:
                 task.status = task.stage = "failed"
-                task.error = "Очередь переполнена"
+                task.error = "Сервис занят. Попробуйте через минуту"
 
 
 async def run_task(task):
@@ -327,12 +327,12 @@ async def run_task(task):
         if task.cancel.is_set():
             return
         if output not in done:
-            raise TimeoutError("Превышено время обработки видео")
+            raise TimeoutError("Подготовка файла заняла слишком много времени. Попробуйте ещё раз")
         task.result = output.result()
         if task.mode == "download" and task.delivery_mode != "fast":
             path = task.directory / task.result["filename"]
             if path.resolve().parent != task.directory.resolve() or not path.is_file():
-                raise RuntimeError("Готовый файл не найден")
+                raise RuntimeError("Не удалось подготовить файл. Попробуйте ещё раз")
         # «Готово» публикуем только после остановки всей группы процессов ниже.
         # Иначе HTTP-ответ мог бы начать читать файл одновременно с очисткой.
         succeeded = True
@@ -360,7 +360,7 @@ async def run_task(task):
             task.retry_with_another_proxy = False
             logger.warning("Media task %s failed: %s", task.id, error)
             task.status = task.stage = "failed"
-        task.error = str(error) if isinstance(error, (RuntimeError, TimeoutError)) else "Не удалось обработать видео"
+        task.error = str(error) if isinstance(error, (RuntimeError, TimeoutError)) else "Не удалось подготовить скачивание. Попробуйте ещё раз"
     finally:
         # Сначала останавливаем дерево, затем закрываем читателей и удаляем файлы.
         if process:

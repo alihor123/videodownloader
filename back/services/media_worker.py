@@ -39,29 +39,29 @@ class Logger:
 def get_user_error(error, platform_id):
     """Не отдаём пользователю технические тексты yt-dlp и платформ."""
     reason = str(error).lower()
+    if any(phrase in reason for phrase in (
+        "age-restricted", "age restricted", "confirm your age", "age verification",
+    )):
+        return "Видео с возрастным ограничением пока нельзя скачать"
     if platform_id == "tiktok" and any(phrase in reason for phrase in (
         "unexpected response from webpage request", "impersonation",
     )):
-        return ("TikTok отклонил запрос браузера. На сервере нужен пакет curl-cffi "
-                "для имитации браузера; cookies сами по себе эту ошибку не исправят")
+        return "TikTok временно не отвечает. Попробуйте позже"
     if "ip address is blocked" in reason:
-        return "Платформа временно заблокировала доступ с IP сервера. Попробуйте позже"
+        return "Платформа временно ограничила скачивание. Попробуйте позже"
     if platform_id == "instagram" and any(word in reason for word in (
         "isn't available to everyone", "not available to everyone", "certain audiences", "csrf token",
     )):
-        return ("Instagram не отдаёт это видео всем зрителям. Оно может быть ограничено "
-                "по возрасту или настройкам публикации — сервис скачивает только публично доступные видео")
-    if platform_id == "instagram" and "нужна ссылка на отдельное" in reason:
-        return ("Instagram-карусели и публикации с несколькими материалами пока не поддерживаются. "
-                "Укажите ссылку на отдельный Reel или видеопост")
+        return "Видео с ограниченным доступом скачать нельзя"
+    if "нужна ссылка на отдельное" in reason:
+        return "Нужна ссылка на одно видео, а не на подборку"
     if any(word in reason for word in ("login", "sign in", "log in", "authentication")):
-        return ("Платформа не отдаёт это видео как публичное. Проверьте, что оно открывается "
-                "без ограничений, и попробуйте другую ссылку")
+        return "Видео с ограниченным доступом скачать нельзя"
     if "прямые эфиры" in reason:
-        return "Прямые эфиры не поддерживаются"
+        return "Прямые эфиры пока не поддерживаются"
     if "нет доступных форматов" in reason:
-        return "Нет доступных форматов для скачивания"
-    return "Источник не отдал видео. Попробуйте другую публичную ссылку"
+        return "Для этого видео нет вариантов скачивания"
+    return "Не удалось получить видео. Проверьте ссылку и попробуйте ещё раз"
 
 
 def is_proxy_or_ip_error(error):

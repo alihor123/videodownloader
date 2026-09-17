@@ -26,7 +26,7 @@ def detect_platform(url):
                 return platform
     except ValueError:
         pass
-    raise ValueError("Вставьте ссылку на видео из поддерживаемой платформы")
+    raise ValueError("Эта ссылка не поддерживается")
 
 
 def normalize_platform_url(url, platform):
