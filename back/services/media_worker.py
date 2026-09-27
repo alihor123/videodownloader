@@ -64,10 +64,17 @@ def get_user_error(error, platform_id):
     return "Не удалось получить видео. Проверьте ссылку и попробуйте ещё раз"
 
 
+def is_proxy_auth_error(error):
+    """Отказ авторизации прокси требует другого исходящего IP."""
+    reason = str(error).lower()
+    return ("http error 407" in reason or "proxy authentication required" in reason or
+            ("authentication failed" in reason and ("socks" in reason or "proxy" in reason)))
+
+
 def is_proxy_or_ip_error(error):
     """Менять IP имеет смысл только при сетевой или антибот-ошибке."""
     reason = str(error).lower()
-    return any(phrase in reason for phrase in (
+    return is_proxy_auth_error(error) or any(phrase in reason for phrase in (
         "ip address is blocked", "sign in to confirm", "not a bot",
         "http error 403", "http error 429", "too many requests",
         "proxy error", "proxy connection", "connection refused",
@@ -79,6 +86,8 @@ def is_proxy_or_ip_error(error):
 def get_proxy_error_kind(error):
     """Короткая причина для статистики; исходный текст yt-dlp не сохраняем."""
     reason = str(error).lower()
+    if is_proxy_auth_error(error):
+        return "proxy_auth"
     if "http error 429" in reason or "too many requests" in reason:
         return "http_429"
     if "http error 403" in reason:

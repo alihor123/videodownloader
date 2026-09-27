@@ -19,8 +19,8 @@ from services.media_platforms import detect_platform, normalize_platform_url
 from services.media_formats import build_format_list, format_duration, format_filesize, select_fast_format
 from services import process_tree
 from services.media_worker import (
-    get_download_progress, get_platform_cookie_file, get_user_error, probe_fast_source,
-    should_retry_without_youtube_cookies,
+    get_download_progress, get_platform_cookie_file, get_proxy_error_kind, get_user_error,
+    is_proxy_or_ip_error, probe_fast_source, should_retry_without_youtube_cookies,
 )
 from services.ytdlp_service import get_info_ydl_opts
 
@@ -236,6 +236,19 @@ class PlatformsTest(unittest.TestCase):
         self.assertTrue(should_retry_without_youtube_cookies(unavailable_error, "youtube", cookie_file))
         self.assertFalse(should_retry_without_youtube_cookies(error, "instagram", cookie_file))
         self.assertFalse(should_retry_without_youtube_cookies(error, "youtube", None))
+
+    def test_proxy_authentication_failure_uses_another_ip(self):
+        for message in (
+            "HTTP Error 407: Proxy Authentication Required",
+            "SOCKS5 authentication failed",
+            "Unable to connect to proxy: authentication failed",
+        ):
+            with self.subTest(message=message):
+                error = Exception(message)
+                self.assertTrue(is_proxy_or_ip_error(error))
+                self.assertEqual(get_proxy_error_kind(error), "proxy_auth")
+
+        self.assertFalse(is_proxy_or_ip_error(Exception("Login required for this video")))
 
     def test_tiktok_browser_challenge_has_a_short_message(self):
         message = get_user_error(
