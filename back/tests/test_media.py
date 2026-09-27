@@ -246,7 +246,7 @@ class PlatformsTest(unittest.TestCase):
             with self.subTest(message=message):
                 error = Exception(message)
                 self.assertTrue(is_proxy_or_ip_error(error))
-                self.assertEqual(get_proxy_error_kind(error), "proxy_auth")
+                self.assertEqual(get_proxy_error_kind(error), "connection_error")
 
         self.assertFalse(is_proxy_or_ip_error(Exception("Login required for this video")))
 
