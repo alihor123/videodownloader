@@ -9,6 +9,7 @@ import searchIcon from '../../assets/icons/search.svg?raw'
 import stopIcon from '../../assets/icons/stop.svg?raw'
 import visibilityIcon from '../../assets/icons/visibility.svg?raw'
 import ServiceGuide, { PlatformIcon } from './ServiceGuide'
+import VideoThumbnail from './VideoThumbnail'
 
 function SvgIcon({ svg, className }: { svg: string; className?: string }) {
   return (
@@ -115,14 +116,9 @@ export default function MainPage() {
             <>
               <div className={styles.videoInfo}>
                 {videoData.thumbnail && (
-                  <img
-                    className={styles.videoThumbnail}
+                  <VideoThumbnail
+                    key={videoData.thumbnail}
                     src={videoData.thumbnail}
-                    alt=""
-                    referrerPolicy="no-referrer"
-                    onError={(event) => {
-                      event.currentTarget.hidden = true
-                    }}
                   />
                 )}
                 <div className={styles.videoDetails}>

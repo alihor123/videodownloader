@@ -1,0 +1,46 @@
+{
+  "expo": {
+    "platforms": [
+      "android"
+    ],
+    "name": "a4loader",
+    "slug": "a4loader",
+    "version": "1.0.0",
+    "jsEngine": "hermes",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "a4loader",
+    "userInterfaceStyle": "automatic",
+    "android": {
+      "versionCode": 1,
+      "package": "ru.a4dev.a4loader",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-foreground.png",
+        "backgroundColor": "#ffffff"
+      },
+      "softwareKeyboardLayoutMode": "resize",
+      "predictiveBackGestureEnabled": false
+    },
+    "plugins": [
+      "expo-router",
+      "expo-image",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "enableMinifyInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true,
+            "useLegacyPackaging": true
+          }
+        }
+      ],
+      "./plugins/withBackgroundTaskRemoved",
+      "./plugins/withIconNightBackground",
+      "./plugins/withShortCmakePaths"
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    }
+  }
+}

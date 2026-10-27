@@ -96,12 +96,21 @@ async function main() {
   console.log('PASS: metadata search uses one POST without status polling')
 
   const selectedQuality = page.getByRole('button', { name: /720p/ })
-  const selectedShadow = await selectedQuality.evaluate(element => getComputedStyle(element).boxShadow)
+  const selectedAppearance = await selectedQuality.evaluate(element => {
+    const style = getComputedStyle(element)
+    return { shadow: style.boxShadow, border: style.borderColor, background: style.backgroundColor }
+  })
   await selectedQuality.hover()
-  const selectedHoverShadow = await selectedQuality.evaluate(element => getComputedStyle(element).boxShadow)
-  assert.ok(selectedShadow.includes('inset'))
-  assert.ok(selectedHoverShadow.includes('inset'))
-  console.log('PASS: selected quality keeps its two-pixel visual border on hover')
+  await page.waitForTimeout(250)
+  const selectedHoverAppearance = await selectedQuality.evaluate(element => {
+    const style = getComputedStyle(element)
+    return { shadow: style.boxShadow, border: style.borderColor, background: style.backgroundColor }
+  })
+  assert.equal(selectedAppearance.shadow, 'none')
+  assert.equal(selectedAppearance.border, 'rgba(0, 0, 0, 0)')
+  assert.notEqual(selectedAppearance.background, 'rgba(0, 0, 0, 0)')
+  assert.deepEqual(selectedHoverAppearance, selectedAppearance)
+  console.log('PASS: selected quality keeps its colored background without a border on hover')
   await page.getByRole('button', { name: 'Скачать', exact: true }).click()
   await page.getByText('Скачиваем файл...', { exact: true }).waitFor()
   await page.getByRole('button', { name: 'Отменить', exact: true }).click()

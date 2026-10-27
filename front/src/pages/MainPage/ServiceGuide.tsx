@@ -76,7 +76,7 @@ export default function ServiceGuide() {
       <div className={styles.guideIntro}>
         <h1 id="guide-title">Скачать видео по ссылке</h1>
         <p>
-          VideoLoader помогает скачать публичные видео с YouTube, Rutube, VK Видео, TikTok, Instagram и X / Twitter.
+          a4loader помогает скачать публичные видео с YouTube, Rutube, VK Видео, TikTok, Instagram и X / Twitter.
           Вставьте ссылку, выберите качество — подготовим файл для загрузки.
         </p>
       </div>

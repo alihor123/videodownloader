@@ -1,4 +1,8 @@
-# videodownloader
+# a4loader
+
+Веб-клиент находится в `front/`, Android-приложение — в `mobile/`, общий FastAPI backend — в `back/`.
+Android-клиент обращается к существующему API и не требует изменений сервера.
+Установка, фоновое скачивание и локальная сборка APK описаны в [mobile/README.md](mobile/README.md).
 
 Продакшен-гайд для Linux-сервера (Ubuntu/Debian) с backend + frontend, `systemd`, `nginx`, HTTPS и нормальным повторным деплоем.
 

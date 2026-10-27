@@ -237,7 +237,9 @@
 }
 
 .videoThumbnail {
-    width: auto;
+    position: relative;
+    display: block;
+    width: calc(110px * var(--thumbnail-ratio, 1.777778));
     height: 110px;
     max-width: 220px;
     max-height: none;
@@ -246,6 +248,30 @@
     object-fit: contain;
     align-self: center;
     background: var(--bg-muted);
+    overflow: hidden;
+}
+
+.thumbnailImage {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.videoThumbnail[data-loading="true"] .thumbnailImage {
+    opacity: 0;
+}
+
+.thumbnailSkeleton {
+    position: absolute;
+    inset: 0;
+    background: var(--bg-strong);
+    animation: thumbnailPulse 1.15s ease-in-out infinite;
+}
+
+@keyframes thumbnailPulse {
+    0%, 100% { opacity: 0.45; }
+    50% { opacity: 1; }
 }
 
 .videoDetails {
@@ -638,7 +664,7 @@
     }
 
     .videoThumbnail {
-        width: auto;
+        width: calc(100px * var(--thumbnail-ratio, 1.777778));
         height: 100px;
         max-width: 190px;
         max-height: none;
@@ -926,6 +952,7 @@ button:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
 
     .videoThumbnail {
         grid-area: thumbnail;
+        width: calc(65px * var(--thumbnail-ratio, 1.777778));
         height: 65px;
         max-width: 116px;
         align-self: start;
@@ -965,6 +992,7 @@ button:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
 @media (prefers-reduced-motion: reduce) {
     .searchButton, .qualityItem, .downloadButton, .downloadBarFill { transition: none; }
     .downloadBarFillMerging { animation: none; }
+    .thumbnailSkeleton { animation: none; }
 }
 
 @media (max-width: 520px) {

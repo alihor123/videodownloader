@@ -10,6 +10,4 @@ function applyTheme(): void {
 
 applyTheme()
 
-const root = document.getElementById('root')
-if (!root) throw new Error('Не найден элемент #root')
-createRoot(root).render(<StrictMode><RootRouter /></StrictMode>)
+createRoot(document.getElementById('root')!).render(<StrictMode><RootRouter /></StrictMode>)

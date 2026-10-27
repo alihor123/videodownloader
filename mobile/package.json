@@ -1,0 +1,52 @@
+{
+  "name": "a4loader",
+  "main": "expo-router/entry",
+  "version": "1.0.0",
+  "dependencies": {
+    "expo": "~58.0.19",
+    "expo-constants": "~58.0.13",
+    "expo-device": "~58.0.5",
+    "expo-font": "~58.0.9",
+    "expo-image": "~58.0.17",
+    "expo-linking": "~58.0.14",
+    "expo-router": "~58.0.25",
+    "expo-status-bar": "~58.0.4",
+    "expo-system-ui": "~58.0.6",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-native": "0.88.0",
+    "react-native-background-actions": "4.1.0",
+    "react-native-blob-util": "0.25.1",
+    "react-native-svg": "15.16.0",
+    "react-native-safe-area-context": "~5.10.1",
+    "react-native-screens": "~4.30.0"
+  },
+  "devDependencies": {
+    "@types/react": "~19.3.0",
+    "eslint": "9",
+    "eslint-config-expo": "~58.0.4",
+    "expo-build-properties": "~58.0.7",
+    "react-native-svg-transformer": "^1.5.1",
+    "typescript": "~6.0.3"
+  },
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android",
+    "build:android": "scripts\\build-android.cmd",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test tests/download-service.cjs tests/preview.cjs tests/controller.cjs tests/notification-plugin.cjs",
+    "lint": "expo lint"
+  },
+  "private": true,
+  "expo": {
+    "autolinking": {
+      "android": {
+        "exclude": [
+          "react-native-gesture-handler",
+          "react-native-reanimated",
+          "react-native-worklets"
+        ]
+      }
+    }
+  }
+}
