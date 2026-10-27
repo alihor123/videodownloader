@@ -206,7 +206,7 @@ export function MainPage() {
       )}
 
       <View style={styles.content}>
-        {!videoData && <ScrollView style={styles.guideScroll} keyboardShouldPersistTaps="handled"><ServiceGuide /></ScrollView>}
+        {!videoData && <ScrollView style={styles.guideScroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled"><ServiceGuide /></ScrollView>}
         {videoData && (
           <>
             <View style={[styles.videoInfo, isPhone ? { flexWrap: 'wrap' } : null]}>
@@ -229,7 +229,7 @@ export function MainPage() {
                   <Text style={styles.qualityTitle}>Качество</Text>
                   <View style={styles.platform}><PlatformIcon platform={videoData.platform} tintColor={styles.platformIconTint.tintColor} /><Text style={styles.platformName}>{videoData.platform_name}</Text></View>
                 </View>
-                <ScrollView style={styles.qualityList} contentContainerStyle={styles.qualityContent} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+                <ScrollView style={styles.qualityList} contentContainerStyle={styles.qualityContent} showsVerticalScrollIndicator={false} nestedScrollEnabled keyboardShouldPersistTaps="handled">
                   {videoData.formats.map((format) => {
                     const selected = selectedFormat?.height === format.height
                     return (

@@ -34,7 +34,7 @@
     "android": "expo run:android",
     "build:android": "scripts\\build-android.cmd",
     "typecheck": "tsc --noEmit",
-    "test": "node --test tests/download-service.cjs tests/preview.cjs tests/controller.cjs tests/notification-plugin.cjs",
+    "test": "node --test tests/download-service.cjs tests/preview.cjs tests/controller.cjs tests/notification-plugin.cjs tests/startup-permissions.cjs tests/branding.cjs",
     "lint": "expo lint"
   },
   "private": true,

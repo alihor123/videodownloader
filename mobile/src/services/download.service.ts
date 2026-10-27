@@ -289,7 +289,7 @@ export async function startDownload(url: string, format: MediaFormat): Promise<v
         taskName: 'a4loaderDownload',
         taskTitle: 'a4loader',
         taskDesc: 'Подготавливаем скачивание',
-        taskIcon: { name: 'stat_sys_download', type: 'drawable', package: 'android' },
+        taskIcon: { name: 'ic_stat_a4loader', type: 'drawable' },
         color: '#f02038',
         linkingURI: 'a4loader://',
         foregroundServiceType: ['dataSync'],
