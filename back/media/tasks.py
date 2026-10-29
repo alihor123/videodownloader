@@ -1,4 +1,4 @@
-"""Задачи живут в одном event loop. Запускать backend с одним worker."""
+"""Создание задач для возможной отмены"""
 import asyncio
 import json
 import logging
@@ -23,55 +23,88 @@ from proxies.pool import (
 
 
 logger = logging.getLogger(__name__)
+# Общий каталог временных папок задач: back/tmp/media_tasks/<UUID задачи>.
 TASK_ROOT = BASE_DIR / "tmp" / "media_tasks"
+# Состояния завершённых задач, которые больше не занимают лимит активных операций.
 TERMINAL = {"failed", "cancelled", "completed"}
 
 
 @dataclass
 class MediaTask:
-    """Состояние задачи получения информации, подготовки и передачи медиа."""
+    """Данные и состояние одной операции получения информации или скачивания медиа."""
+    # UUID операции, по которому API находит задачу для проверки состояния и отмены.
     id: str
+    # Исходная ссылка на видео.
     url: str = ""
+    # Операция: info — получить информацию, download — скачать медиа.
     mode: str = "download"
+    # Запрошена быстрая передача; при переходе к обычному скачиванию сбрасывается.
     requested_fast: bool = False
+    # Текущий способ выдачи: fast — прямой поток через сервер, file — готовый файл.
     delivery_mode: str = "file"
+    # Тип скачиваемого медиа: video или audio.
     format_kind: str = "video"
+    # Качество: высота видео в пикселях или битрейт аудио в кбит/с.
     height: str = "720"
+    # Идентификатор источника, например youtube или rutube.
     platform: str = ""
+    # Состояние задачи, например queued, running, ready, failed или cancelled.
     status: str = "queued"
+    # Текущий этап работы: подготовка, скачивание дорожки, объединение или передача.
     stage: str = "queued"
+    # Процент выполнения; None, если прогресс пока нельзя посчитать.
     progress: int | None = 0
+    # Текст ошибки для пользователя, если операция завершилась неуспешно.
     error: str | None = None
+    # Результат worker: информация о видео, данные готового файла или прямого потока.
     result: dict | None = None
+    # Время создания задачи в секундах монотонного таймера.
     created: float = field(default_factory=time.monotonic)
+    # Время последнего обращения к задаче для отслеживания бездействия клиента.
     touched: float = field(default_factory=time.monotonic)
+    # Время готовности результата для ограничения срока его хранения.
     ready_at: float | None = None
+    # Сигнал запроса отмены, который ожидает код выполнения и передачи файла.
     cancel: asyncio.Event = field(default_factory=asyncio.Event)
+    # Асинхронная задача run_task(), управляющая дочерним процессом worker.
     runner: asyncio.Task | None = None
+    # Сервер сейчас передаёт файл или прямой поток клиенту.
     streaming: bool = False
+    # Сигнал окончания передачи клиенту, включая остановку при отмене.
     transfer_done: asyncio.Event = field(default_factory=asyncio.Event)
+    # IP клиента для ограничения числа задач и статистики скачиваний.
     ip: str = "unknown"
+    # Заголовок User-Agent клиента для статистики скачиваний.
     user_agent: str | None = None
+    # Очередь операции: info, fast или file.
     queue_name: str = "file"
+    # Worker запросил переход из быстрого режима к обычному скачиванию.
     fallback_requested: bool = False
+    # Ключ исходящего IP в пуле: main или proxy_N; адрес и пароль хранятся отдельно.
     proxy_key: str | None = None
+    # Количество попыток выполнения задачи через исходящие IP.
     proxy_attempts: int = 0
+    # Worker сообщил об IP-ошибке для повторной попытки через другой IP.
     retry_with_another_proxy: bool = False
+    # Причина IP-ошибки для статистики, например http_403 или timeout.
     proxy_error_kind: str | None = None
 
     @property
     def directory(self):
-        """Возвращает отдельную временную папку этой задачи."""
+        """Путь к временной папке этой задачи."""
         return TASK_ROOT / self.id
 
 
+# Задачи по UUID в памяти backend: активные и сохранённые завершённые операции.
 TASKS: dict[str, MediaTask] = {}
+# Очереди asyncio.Queue по именам info, fast и file; внутри находятся объекты MediaTask.
 QUEUES: dict[str, asyncio.Queue] = {}
+# Запущенные корутины queue_worker(), которые последовательно берут задачи из очередей.
 WORKERS: list[asyncio.Task] = []
 
 
 def normalize_id(task_id):
-    """Проверяет UUID задачи и приводит его к строке без дефисов."""
+    """Проверка UUID задачи и приведение к строке без дефисов."""
     try:
         return UUID(str(task_id)).hex
     except ValueError:
@@ -79,7 +112,7 @@ def normalize_id(task_id):
 
 
 def cleanup_directory(task):
-    """Только отдельная папка задачи; не затрагиваем старый tmp и чужие файлы."""
+    """Удаление временной папки задачи вместе с её файлами."""
     directory = task.directory.resolve()
     if directory.parent != TASK_ROOT.resolve():
         raise ValueError("Папка задачи находится вне media_tasks")
@@ -93,7 +126,7 @@ def cleanup_directory(task):
 
 
 def get_task(task_id, touch=True):
-    """Находит задачу и при необходимости обновляет время последнего обращения к ней."""
+    """Получение задачи по UUID с возможностью обновить время последнего обращения."""
     task = TASKS.get(normalize_id(task_id))
     if not task:
         raise HTTPException(404, "Задача не найдена")
@@ -103,7 +136,7 @@ def get_task(task_id, touch=True):
 
 
 def serialize_task(task):
-    """Собирает публичное состояние задачи для ответа API без внутренних данных источника."""
+    """Подготовка состояния задачи для ответа API."""
     data = {"task_id": task.id, "status": task.status, "stage": task.stage,
             "message": task.error or get_stage_message(task.stage), "progress": task.progress,
             "error": task.error, "error_code": 500 if task.status == "failed" else None,
@@ -119,7 +152,7 @@ def serialize_task(task):
 
 
 def queue_position(task):
-    """Вычисляет позицию ожидания с учётом занятых и доступных обработчиков очереди."""
+    """Позиция ожидания задачи с учётом свободных обработчиков очереди."""
     # Очередь живёт только в одном event loop; _queue читается без await.
     queue = QUEUES.get(task.queue_name)
     if queue is None:
@@ -145,7 +178,7 @@ def queue_position(task):
 
 
 def ensure_queues():
-    """Создаёт очереди информации, быстрой передачи и обычного скачивания, если их ещё нет."""
+    """Создание очередей info, fast и file, если они ещё не созданы."""
     if QUEUES:
         return
     QUEUES.update({
@@ -157,7 +190,7 @@ def ensure_queues():
 
 def create_task(url, height="720", mode="download", task_id=None, *, requested_fast=False,
                 ip="unknown", user_agent=None, kind="video"):
-    """Проверяет лимиты и идентификатор, затем сохраняет задачу и ставит её в нужную очередь."""
+    """Создание задачи и добавление в очередь после проверки ссылки, UUID и лимитов."""
     ensure_queues()
     platform = detect_platform(url)
     task_id = normalize_id(task_id or uuid4())
@@ -192,7 +225,7 @@ def create_task(url, height="720", mode="download", task_id=None, *, requested_f
 
 
 async def cancel_task(task_id):
-    """Отменяет ожидающую или работающую задачу и дожидается освобождения её ресурсов."""
+    """Отмена задачи с ожиданием остановки выполнения и передачи файла."""
     task_id = normalize_id(task_id)
     task = TASKS.get(task_id)
     if task is None:
@@ -233,7 +266,7 @@ async def cancel_task(task_id):
 
 
 async def read_events(process, task):
-    """Читает события дочернего процесса, обновляет задачу и возвращает результат работы."""
+    """Чтение JSON-сообщений worker: прогресс, результат, ошибки и переход режима."""
     result = None
     error_message = "Не удалось получить видео. Попробуйте ещё раз"
     while line := await process.stdout.readline():
@@ -256,14 +289,14 @@ async def read_events(process, task):
 
 
 async def drain_errors(process, task):
-    """Читает stderr процесса и пишет в журнал ограниченные по длине строки."""
+    """Запись технического вывода worker из stderr в лог."""
     # Ограниченный вывод в журнал; не накапливаем stderr длинного скачивания в RAM.
     async for line in process.stderr:
         logger.warning("Media worker %s: %s", task.id, line.decode("utf-8", errors="replace").rstrip()[:2000])
 
 
 async def queue_worker(queue_name):
-    """Обрабатывает задачи одной очереди и повторно ставит их при смене IP или режима."""
+    """Последовательный запуск задач из одной очереди."""
     queue = QUEUES[queue_name]
     while True:
         task = await queue.get()
@@ -299,7 +332,7 @@ async def queue_worker(queue_name):
 
 
 async def run_task(task):
-    """Запускает процесс задачи, обрабатывает результат и повторы, затем освобождает ресурсы."""
+    """Запуск процесса worker и ожидание результата, отмены или таймаута."""
     process = job = None
     readers = []
     succeeded = False
@@ -405,7 +438,7 @@ async def run_task(task):
 
 
 async def reap_tasks():
-    """Отмена забытых работ и периодическая очистка, даже если новых запросов нет."""
+    """Фоновая отмена задач по таймауту или размеру файлов и очистка завершённых задач."""
     while True:
         await asyncio.sleep(2)
         now = time.monotonic()
@@ -437,7 +470,7 @@ async def reap_tasks():
 
 
 async def start_tasks():
-    """Создаёт очереди и обработчики, очищает старые папки задач и запускает фоновую очистку."""
+    """Создание очередей, запуск их обработчиков и фоновой очистки."""
     TASK_ROOT.mkdir(parents=True, exist_ok=True)
     QUEUES.clear()
     QUEUES.update({
@@ -463,7 +496,7 @@ async def start_tasks():
 
 
 async def shutdown_tasks(reaper):
-    """Останавливает фоновую очистку, отменяет задачи и завершает обработчики очередей."""
+    """Остановка обработчиков и фоновой очистки с отменой всех задач."""
     reaper.cancel()
     await asyncio.gather(reaper, return_exceptions=True)
     await asyncio.gather(*(cancel_task(task.id) for task in list(TASKS.values())))
