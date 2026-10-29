@@ -8,6 +8,7 @@ from config import settings
 
 
 def get_client_ip(request: Request):
+    """Определяет IP клиента с учётом разрешённых заголовков обратного прокси."""
     if settings.trust_proxy_headers:
         real_ip = request.headers.get("x-real-ip")
         if real_ip:
@@ -19,14 +20,17 @@ def get_client_ip(request: Request):
 
 
 class RateLimiter:
+    """Ограничивает число запросов с одного IP за заданный промежуток времени."""
     max_clients = 10000
 
     def __init__(self, max_requests: int, period: int):
+        """Сохраняет лимит запросов, длительность окна и историю клиентов."""
         self.max_requests = max_requests
         self.period = period
         self.history = OrderedDict()
 
     def __call__(self, request: Request):
+        """Проверяет лимит, учитывает текущий запрос и возвращает IP клиента."""
         user_id = get_client_ip(request)
         now = time()
         timestamps = self.history.get(user_id)

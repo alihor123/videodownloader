@@ -10,10 +10,12 @@ logger = logging.getLogger(__name__)
 
 
 class DeploymentError(RuntimeError):
+    """Ошибка подготовки, сборки или активации новой версии приложения."""
     pass
 
 
 async def run_command(*command, cwd: Path | None = None, step: str):
+    """Выполняет команду, собирает вывод и сообщает об ошибке текущего этапа."""
     process = await asyncio.create_subprocess_exec(
         *(str(item) for item in command),
         cwd=str(cwd) if cwd else None,
@@ -28,10 +30,13 @@ async def run_command(*command, cwd: Path | None = None, step: str):
 
 
 class DeploymentService:
+    """Последовательно подготавливает, собирает и активирует выбранный коммит."""
     def __init__(self):
+        """Создаёт свободный сервис без зарезервированного деплоя."""
         self._reserved = False
 
     def reserve(self) -> bool:
+        """Резервирует сервис для одного деплоя, если он ещё не занят."""
         # Один backend-процесс выполняет только один деплой одновременно.
         if self._reserved:
             return False
@@ -39,6 +44,7 @@ class DeploymentService:
         return True
 
     async def deploy_reserved(self, commit: str):
+        """Выполняет зарезервированный деплой и освобождает сервис даже при ошибке."""
         try:
             deployed = await self._deploy(commit)
             logger.info("Deployment completed: %s", deployed)
@@ -48,6 +54,7 @@ class DeploymentService:
             self._reserved = False
 
     async def _deploy(self, commit: str) -> str:
+        """Выполняет этапы обновления и очищает временный checkout после завершения."""
         await self._prepare_repository()
         await self._validate_commit(commit)
 
@@ -72,6 +79,7 @@ class DeploymentService:
             await self._remove_workspace(workspace)
 
     async def _prepare_repository(self):
+        """Клонирует служебный репозиторий при необходимости и обновляет разрешённую ветку."""
         repository = settings.deploy_repository_dir
         if not (repository / ".git").exists():
             if repository.exists() and any(repository.iterdir()):
@@ -88,6 +96,7 @@ class DeploymentService:
         )
 
     async def _validate_commit(self, commit: str):
+        """Проверяет, что коммит webhook совпадает с вершиной разрешённой ветки."""
         repository = settings.deploy_repository_dir
         remote_head = await run_command(
             "git", "-C", repository, "rev-parse", f"origin/{settings.deploy_branch}",
@@ -99,6 +108,7 @@ class DeploymentService:
             )
 
     def _workspace_for(self, commit: str) -> Path:
+        """Подготавливает отдельный каталог сборки внутри разрешённой рабочей папки."""
         work_root = settings.deploy_work_dir.resolve()
         workspace = (work_root / commit).resolve()
         if workspace.parent != work_root:
@@ -109,6 +119,7 @@ class DeploymentService:
         return workspace
 
     async def _check_and_build(self, workspace: Path):
+        """Проверяет синтаксис backend, устанавливает зависимости frontend и собирает его."""
         await run_command(
             settings.deploy_python_path, "-m", "compileall", "-q", workspace / "back",
             step="Проверка backend",
@@ -117,6 +128,7 @@ class DeploymentService:
         await run_command("npm", "run", "build", cwd=workspace / "front", step="Сборка frontend")
 
     async def _install_requirements(self, workspace: Path):
+        """Устанавливает зависимости backend, только если requirements.txt изменился."""
         current = settings.deploy_release_dir / "back" / "requirements.txt"
         incoming = workspace / "back" / "requirements.txt"
         if current.exists() and current.read_bytes() == incoming.read_bytes():
@@ -127,6 +139,7 @@ class DeploymentService:
         )
 
     async def _activate(self, workspace: Path):
+        """Обновляет рабочие файлы приложения, сохраняя настройки и постоянные данные."""
         backend = settings.deploy_release_dir / "back"
         frontend = settings.deploy_frontend_dir
         backend.mkdir(parents=True, exist_ok=True)
@@ -145,6 +158,7 @@ class DeploymentService:
         )
 
     async def _schedule_restart(self, commit: str):
+        """Планирует отложенный перезапуск сервиса backend через systemd."""
         await run_command(
             "systemd-run", "--collect", f"--unit=videodownloader-restart-{commit[:12]}",
             "--on-active=2s", "/bin/systemctl", "restart", settings.deploy_backend_service,
@@ -152,6 +166,7 @@ class DeploymentService:
         )
 
     async def _remove_workspace(self, workspace: Path):
+        """Удаляет временный checkout и освобождает его каталог после сборки."""
         if not workspace.exists():
             return
         try:

@@ -1,13 +1,13 @@
-"""Safe live download probe.
+"""Проверка реального скачивания без сохранения результата в проекте.
 
-Run from ``back``:
-``python -m tests.live_download_probe https://example/video --mode file``
-or ``python -m tests.live_download_probe https://example/video --mode fast``.
+Запуск из back:
+python -m tests.live_download_probe https://example/video --mode file
+или python -m tests.live_download_probe https://example/video --mode fast.
 
-The file mode validates a complete non-empty temporary file. Fast mode reads
-at most 256 KiB from the upstream stream and always cancels afterwards, so a
-partial fast transfer is never reported as completed. Output contains only
-platform, mode, status, byte count, and a safe error message.
+Обычный режим проверяет готовый непустой временный файл. Быстрый режим
+читает не более 256 КиБ и затем отменяет задачу: неполная передача
+не считается завершённой. Вывод содержит только платформу, режим,
+состояние, число байтов и безопасное сообщение об ошибке.
 """
 import argparse
 import asyncio
@@ -15,14 +15,15 @@ import inspect
 import tempfile
 from pathlib import Path
 
-from routers.media_router import ManagedFastResponse
-from services import media_tasks as manager
-from services.media_platforms import detect_platform
+from media.router import ManagedFastResponse
+from media import tasks as manager
+from media.platforms import detect_platform
 
 MAX_FAST_BYTES = 256 * 1024
 
 
 async def wait_terminal(task, timeout=900):
+    """Дожидается готовности или завершения задачи в пределах заданного времени."""
     deadline = asyncio.get_running_loop().time() + timeout
     while task.status not in {"ready", "failed", "cancelled", "completed"}:
         if asyncio.get_running_loop().time() >= deadline:
@@ -31,6 +32,7 @@ async def wait_terminal(task, timeout=900):
 
 
 async def probe(url, mode):
+    """Проверяет файл целиком либо начало прямого потока и затем освобождает задачу."""
     platform = detect_platform(url)["id"]
     info = manager.create_task(url, mode="info")
     await wait_terminal(info)
@@ -79,7 +81,7 @@ async def probe(url, mode):
                         break
             finally:
                 await stream.aclose()
-            # Partial fast data is intentionally never marked completed.
+            # Неполная передача прямого потока не считается завершённой.
             status = "passed" if bytes_read else "failed"
             if not bytes_read:
                 error = "fast stream returned no data"
@@ -93,6 +95,7 @@ async def probe(url, mode):
 
 
 async def main():
+    """Читает параметры запуска и выполняет проверку скачивания во временном каталоге."""
     parser = argparse.ArgumentParser()
     parser.add_argument("url", help="public https video URL")
     parser.add_argument("--mode", choices=("file", "fast"), default="file")

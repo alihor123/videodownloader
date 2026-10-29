@@ -9,24 +9,27 @@ QUALITY_MARKER_RE = re.compile(r"(?:^|_)(\d{3,4})p(?:_|$)")
 
 
 def get_filesize(format_data):
+    """Возвращает известный или приблизительный размер формата в байтах."""
     return format_data.get("filesize") or format_data.get("filesize_approx") or 0
 
 
 def has_video_stream(format_data):
+    """Проверяет наличие видеодорожки в формате."""
     return format_data.get("vcodec") not in {None, "none"}
 
 
 def has_audio_stream(format_data):
+    """Проверяет наличие аудиодорожки в формате."""
     return format_data.get("acodec") not in {None, "none"}
 
 
 def is_muxed_format(format_data):
-    """True only for a format containing both video and audio streams."""
+    """Проверяет, что формат содержит одновременно видео и звук."""
     return has_video_stream(format_data) and has_audio_stream(format_data)
 
 
 def is_fast_direct_format(format_data):
-    """Whether a muxed format can be proxied as one HTTP media stream."""
+    """Проверяет возможность передать формат с видео и звуком одним HTTP-потоком."""
     return (is_muxed_format(format_data) and format_data.get("url") and
             format_data.get("protocol") in {None, "http", "https"})
 
@@ -38,12 +41,11 @@ def get_fast_format_heights(info):
 
 
 def select_fast_format(info, height):
-    """Select a directly downloadable muxed format for the requested height.
+    """Выбирает цельный формат с точной запрошенной высотой для быстрой передачи.
 
-    Fast delivery cannot merge separate streams, so formats without an audio
-    stream are deliberately excluded.  The requested selector height must be
-    present exactly; otherwise the caller can fall back to a regular download.
-    Among exact matches, prefer MP4 and then the highest bitrate.
+    Раздельные дорожки не подходят: быстрая передача их не объединяет.
+    Если точной высоты нет, возвращает None для обычного скачивания.
+    При совпадении высоты предпочитает MP4, затем больший битрейт и размер.
     """
     try:
         requested = int(height)
@@ -55,7 +57,8 @@ def select_fast_format(info, height):
         return None
 
     def preference(item):
-        # MP4 is the most predictable browser download container.
+        """Задаёт порядок предпочтения по контейнеру, битрейту и размеру файла."""
+        # MP4 — наиболее предсказуемый контейнер для скачивания в браузере.
         mp4_penalty = 0 if item.get("ext") == "mp4" else 1
         return (mp4_penalty,
                 -(item.get("tbr") or 0), -(get_filesize(item) or 0))
@@ -64,6 +67,7 @@ def select_fast_format(info, height):
 
 
 def get_audio_bitrate(format_data):
+    """Возвращает округлённый битрейт аудио или None, если он неизвестен."""
     bitrate = format_data.get("abr")
     return round(bitrate) if bitrate else None
 
@@ -82,6 +86,7 @@ def get_display_height(format_data):
 
 
 def format_filesize(filesize):
+    """Формирует приблизительный размер файла с единицами измерения."""
     if not filesize:
         return None
     if filesize > 1024 ** 3:
@@ -94,6 +99,7 @@ def format_filesize(filesize):
 
 
 def format_duration(duration_sec):
+    """Форматирует длительность как минуты:секунды или часы:минуты:секунды."""
     if not duration_sec:
         return "0:00"
     minutes, seconds = divmod(max(0, int(duration_sec)), 60)
@@ -104,12 +110,14 @@ def format_duration(duration_sec):
 
 
 def format_views(view_count):
+    """Форматирует число просмотров с пробелами между разрядами."""
     if view_count is None:
         return "Нет данных"
     return f"{view_count:,}".replace(",", " ")
 
 
 def format_audio_quality(bitrate):
+    """Выбирает подпись качества аудио по его битрейту."""
     if bitrate <= 96:
         return "Audio Low"
     if bitrate <= 160:
@@ -118,10 +126,12 @@ def format_audio_quality(bitrate):
 
 
 def get_safe_title(info):
+    """Удаляет из названия символы, которые не используются в имени скачиваемого файла."""
     return re.sub(r"[^\w ._\-()]", "", info.get("title", "video")) or "video"
 
 
 def is_audio_download(height):
+    """Распознаёт значение битрейта аудио среди числовых параметров качества."""
     try:
         value = int(height)
     except (TypeError, ValueError):
@@ -130,14 +140,17 @@ def is_audio_download(height):
 
 
 def get_audio_download_bitrate(height):
+    """Возвращает битрейт строкой, если значение соответствует аудиоформату."""
     return str(height) if is_audio_download(height) else None
 
 
 def get_output_ext(height, kind="video"):
+    """Выбирает расширение результата: MP3 для аудио и MP4 для видео."""
     return "mp3" if kind == "audio" else "mp4"
 
 
 def get_video_height_range_filter(height):
+    """Строит фильтр высоты между предыдущим стандартным качеством и выбранным."""
     height = int(height)
     lower_heights = [item for item in STANDARD_HEIGHTS if item < height]
     if not lower_heights:
@@ -146,6 +159,7 @@ def get_video_height_range_filter(height):
 
 
 def get_download_format(height, kind="video"):
+    """Формирует селектор yt-dlp с запасными вариантами для выбранного качества."""
     if kind == "audio":
         return f"bestaudio[abr<={height}]/bestaudio"
     height_filter = get_video_height_range_filter(height)
@@ -158,6 +172,7 @@ def get_download_format(height, kind="video"):
 
 
 def build_format_list(info, extra_fast_heights=()):
+    """Собирает варианты видео и аудио для клиента, объединяя одинаковое отображаемое качество."""
     video_by_quality = {}
     fast_by_height = get_fast_format_heights(info) | set(extra_fast_heights)
     audio_by_quality = {}
@@ -201,6 +216,7 @@ def build_format_list(info, extra_fast_heights=()):
 
 
 def build_content_disposition(safe_title, file_ext):
+    """Формирует заголовок скачивания с обычным и UTF-8 именем файла."""
     safe_ascii = re.sub(r"[^\x00-\x7F]", "_", safe_title) or "video"
     filename_utf8 = urllib.parse.quote(f"{safe_title}.{file_ext}", safe=".")
     return f'attachment; filename="{safe_ascii}.{file_ext}"; filename*=utf-8\'\'{filename_utf8}'

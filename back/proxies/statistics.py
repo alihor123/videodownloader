@@ -2,34 +2,22 @@ from datetime import datetime, timezone
 
 from sqlalchemy import text
 
-from database.database import DownloadModel, new_session
-from services.proxy_pool import get_proxy_endpoint
-
-
-async def add_download_stat(ip, user_agent, video_url, format_value, file_ext):
-    async with new_session() as session:
-        session.add(
-            DownloadModel(
-                created_at=datetime.now(timezone.utc),
-                ip=ip,
-                user_agent=user_agent,
-                video_url=video_url,
-                format_value=str(format_value),
-                file_ext=file_ext,
-            )
-        )
-        await session.commit()
+from database import new_session
+from proxies.pool import get_proxy_endpoint
 
 
 async def add_proxy_info_success(proxy_key, platform):
+    """Учитывает успешное получение информации через выбранный исходящий IP."""
     await update_proxy_stat(proxy_key, platform, "info_success_count", "last_info_success_at")
 
 
 async def add_proxy_download_success(proxy_key, platform):
+    """Учитывает успешную передачу файла через выбранный исходящий IP."""
     await update_proxy_stat(proxy_key, platform, "download_success_count", "last_download_success_at")
 
 
 async def add_proxy_ip_error(proxy_key, platform, operation, error_kind):
+    """Учитывает IP-ошибку получения информации или скачивания и её причину."""
     if operation == "info":
         await update_proxy_stat(proxy_key, platform, "info_ip_error_count", "last_ip_error_at", error_kind)
     else:

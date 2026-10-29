@@ -1,9 +1,9 @@
 from fastapi import FastAPI, APIRouter
 import uvicorn
 from config import settings
-from database.database import lifespan
-from routers.deployment_router import deployment_router
-from routers.media_router import media_router
+from database import lifespan
+from deployment.router import deployment_router
+from media.router import media_router
 
 app = FastAPI(
     lifespan=lifespan,

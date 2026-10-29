@@ -5,7 +5,7 @@ import re
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, status
 
 from config import settings
-from services.deployment_service import deployment_service
+from deployment.service import deployment_service
 
 
 deployment_router = APIRouter()
@@ -14,6 +14,7 @@ MAX_PAYLOAD_BYTES = 1024 * 1024
 
 
 def verify_github_signature(body: bytes, signature: str | None) -> bool:
+    """Проверяет подпись тела webhook с помощью секрета GitHub."""
     if not settings.deploy_webhook_secret or not signature:
         return False
     digest = hmac.new(
@@ -25,6 +26,7 @@ def verify_github_signature(body: bytes, signature: str | None) -> bool:
 
 
 def get_push_commit(payload: dict) -> str | None:
+    """Возвращает корректный SHA коммита только для разрешённой ветки."""
     expected_ref = f"refs/heads/{settings.deploy_branch}"
     if payload.get("ref") != expected_ref or payload.get("deleted"):
         return None

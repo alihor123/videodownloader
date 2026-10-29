@@ -1,10 +1,10 @@
-"""Настройки и запуск yt-dlp; форматирование ответа остаётся в media_formats."""
+"""Настройки и запуск yt-dlp; форматирование ответа остаётся в media.formats."""
 import urllib.parse
 
 import yt_dlp
 
 from config import settings
-from services.media_formats import (
+from media.formats import (
     get_download_format,
 )
 
@@ -21,10 +21,12 @@ YDL_COMMON_OPTS = {
 
 
 def get_info_ydl_opts():
+    """Возвращает копию общих настроек yt-dlp для получения информации о видео."""
     return YDL_COMMON_OPTS.copy()
 
 
 def get_download_ydl_opts(height, file_ext, download_path, progress_hook, kind="video"):
+    """Собирает настройки скачивания, обработки файла и уведомлений о прогрессе."""
     options = {
         **YDL_COMMON_OPTS,
         "quiet": False,
@@ -57,5 +59,6 @@ def get_video_url(url):
 
 
 def extract_info(url, ydl_opts, download=False):
+    """Запускает yt-dlp для одного видео с выбранными настройками и режимом скачивания."""
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         return ydl.extract_info(get_video_url(url), download=download)

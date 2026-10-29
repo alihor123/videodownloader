@@ -8,12 +8,12 @@ from pathlib import Path
 import httpx
 
 from config import settings
-from services.media_platforms import detect_platform, normalize_platform_url
-from services.media_formats import (
+from media.platforms import detect_platform, normalize_platform_url
+from media.formats import (
     build_format_list, format_duration, format_views, get_output_ext, get_safe_title,
     select_fast_format,
 )
-from services.ytdlp_service import (
+from media.ytdlp import (
     extract_info, get_download_ydl_opts, get_info_ydl_opts,
 )
 
@@ -21,18 +21,23 @@ platform_id = None
 
 
 def emit(kind, **values):
+    """Отправляет событие backend в виде одной JSON-строки через stdout."""
     print(json.dumps({"event": kind, **values}, ensure_ascii=True), flush=True)
 
 
 class Logger:
+    """Совместимый с yt-dlp логгер, который не выводит технические данные источника."""
     # Не передаём в браузер подписанные CDN-ссылки и содержимое cookies.
     def debug(self, message):
+        """Подавляет отладочные сообщения yt-dlp."""
         pass
 
     def warning(self, message):
+        """Подавляет предупреждения yt-dlp."""
         pass
 
     def error(self, message):
+        """Подавляет технические сообщения об ошибках yt-dlp."""
         pass
 
 
@@ -118,7 +123,7 @@ def should_retry_without_youtube_cookies(error, platform_id, cookie_file):
 
 
 def get_fast_headers(format_data):
-    """Return only headers needed by the upstream proxy, never extractor data."""
+    """Возвращает только HTTP-заголовки формата, необходимые для обращения к источнику."""
     allowed = {"user-agent", "referer", "origin", "accept", "accept-language"}
     source_headers = format_data.get("http_headers") or {}
     return {key: value for key, value in source_headers.items()
@@ -126,7 +131,7 @@ def get_fast_headers(format_data):
 
 
 def probe_fast_source(url, headers, source_address="0.0.0.0", proxy_url=None):
-    """Check that the direct source is still usable without downloading it."""
+    """Проверяет доступность прямого потока, запрашивая только его начало."""
     request_headers = dict(headers or {})
     request_headers["Range"] = "bytes=0-0"
     timeout = httpx.Timeout(8.0)
@@ -177,6 +182,7 @@ def get_download_progress(data, current_file, current_track):
 
 
 def main():
+    """Читает параметры задачи и выполняет получение информации или скачивание медиа."""
     # Backend сначала закрепляет процесс в группе/Job, затем разрешает работу
     global platform_id
     payload = json.loads(sys.stdin.readline())
@@ -192,6 +198,7 @@ def main():
     current_track = "file"
 
     def progress_hook(data):
+        """Преобразует события yt-dlp в этапы и ограничивает частоту отправки прогресса."""
         nonlocal last_progress_at, last_reported_progress, current_file, current_track
         status = data.get("status")
         if status == "started":
@@ -247,6 +254,7 @@ def main():
                                   "tiktok", "vm\\.tiktok", "instagram"]
 
     def reject_live(info, *, incomplete=False):
+        """Отклоняет прямые эфиры и ещё не начавшиеся трансляции."""
         if info.get("is_live") or info.get("live_status") in {"is_live", "is_upcoming"}:
             from yt_dlp.utils import DownloadCancelled
             raise DownloadCancelled("Прямые эфиры не поддерживаются")

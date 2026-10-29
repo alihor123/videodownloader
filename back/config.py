@@ -9,12 +9,14 @@ BASE_DIR = Path(__file__).resolve().parent
 
 
 def resolve_optional_path(path):
+    """Преобразует относительный путь в абсолютный, сохраняя пустое значение."""
     if path and not path.is_absolute():
         return (BASE_DIR / path).resolve()
     return path
 
 
 class Settings(BaseSettings):
+    """Настройки приложения, загружаемые из окружения и файла .env."""
     # Имя файла статистики.
     database_name: str = "stats.db"
     # Путь к ffmpeg.
@@ -98,11 +100,13 @@ class Settings(BaseSettings):
     deploy_backend_service: str = "videodownloader-backend.service"
 
     class Config:
+        """Параметры чтения файла .env в кодировке UTF-8."""
         env_file = BASE_DIR / ".env"
         env_file_encoding = "utf-8"
 
     @model_validator(mode="after")
     def resolve_paths(self):
+        """Разрешает пути к программам, cookies и каталогам относительно backend."""
         if not self.ffmpeg_path.is_absolute():
             self.ffmpeg_path = (BASE_DIR / self.ffmpeg_path).resolve()
         self.youtube_cookies_file = resolve_optional_path(self.youtube_cookies_file)

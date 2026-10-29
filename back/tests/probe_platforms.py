@@ -1,16 +1,16 @@
-"""Network smoke probe (metadata by default, no video download).
+"""Сетевая проверка платформ: по умолчанию только информация, без скачивания видео.
 
-Run from ``back`` as ``python -m tests.probe_platforms``. A platform name
-selects the built-in example; passing an https URL probes it without printing
-source URLs, headers, or cookie contents.
+Запуск из back: python -m tests.probe_platforms. Название платформы
+выбирает встроенный пример, а HTTPS-ссылка проверяется напрямую.
+Адреса источников, заголовки и содержимое cookies не выводятся.
 """
 import asyncio
 import json
 import tempfile
 from pathlib import Path
 
-from services import media_tasks as manager
-from services.media_platforms import detect_platform
+from media import tasks as manager
+from media.platforms import detect_platform
 
 
 EXAMPLES = {
@@ -24,6 +24,7 @@ EXAMPLES = {
 
 
 async def main():
+    """Запускает параллельные проверки выбранных платформ во временном каталоге."""
     import sys
     semaphore = asyncio.Semaphore(3)
     with tempfile.TemporaryDirectory(prefix="media-probe-") as directory:
@@ -31,6 +32,7 @@ async def main():
         reaper = await manager.start_tasks()
 
         async def probe(platform, url):
+            """Получает форматы платформы и при запросе проверяет скачивание с Rutube."""
             async with semaphore:
                 task = manager.create_task(url, mode="info")
                 while task.status not in {"ready", "failed", "cancelled"}:

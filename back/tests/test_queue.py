@@ -7,11 +7,12 @@ from unittest.mock import AsyncMock, patch
 from fastapi import HTTPException
 
 from config import settings
-from routers.media_router import ManagedFastResponse
-from services import media_tasks as manager
+from media.router import ManagedFastResponse
+from media import tasks as manager
 
 
 async def eventually(predicate, timeout=2):
+    """Ожидает выполнения условия до истечения таймаута проверки."""
     deadline = asyncio.get_running_loop().time() + timeout
     while not predicate():
         if asyncio.get_running_loop().time() >= deadline:
@@ -20,7 +21,9 @@ async def eventually(predicate, timeout=2):
 
 
 class QueueContractTest(unittest.IsolatedAsyncioTestCase):
+    """Проверки ограничений очередей, обработки задач и перехода между режимами."""
     async def asyncSetUp(self):
+        """Создаёт временный каталог и очищает состояние менеджера перед проверкой."""
         self.temp = tempfile.TemporaryDirectory(prefix="queue-tests-")
         self.root_patch = patch.object(manager, "TASK_ROOT", Path(self.temp.name) / "tasks")
         self.root_patch.start()
@@ -29,6 +32,7 @@ class QueueContractTest(unittest.IsolatedAsyncioTestCase):
         manager.WORKERS.clear()
 
     async def asyncTearDown(self):
+        """Останавливает обработчики и освобождает временные данные после проверки."""
         for worker in manager.WORKERS:
             worker.cancel()
         await asyncio.gather(*manager.WORKERS, return_exceptions=True)
@@ -39,6 +43,7 @@ class QueueContractTest(unittest.IsolatedAsyncioTestCase):
         self.temp.cleanup()
 
     async def test_start_tasks_starts_workers_before_create(self):
+        """Проверяет запуск обработчиков и наличие первой задачи в очереди."""
         reaper = await manager.start_tasks()
         try:
             self.assertGreaterEqual(len(manager.WORKERS), 1)
@@ -48,6 +53,7 @@ class QueueContractTest(unittest.IsolatedAsyncioTestCase):
             await manager.shutdown_tasks(reaper)
 
     async def test_queue_position_is_after_worker_capacity(self):
+        """Проверяет позицию ожидания с учётом обработчиков и предел общего числа задач."""
         with patch.object(settings, "max_queue_total", 10), \
              patch.object(settings, "file_queue_size", 10), \
              patch.object(settings, "file_worker_count", 3):
@@ -65,6 +71,7 @@ class QueueContractTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(error.exception.status_code, 503)
 
     async def test_per_ip_capacity_is_enforced(self):
+        """Проверяет ограничение числа активных задач с одного IP."""
         with patch.object(settings, "max_queue_per_ip", 1):
             manager.create_task("https://youtu.be/one", ip="same")
             with self.assertRaises(HTTPException) as error:
@@ -72,6 +79,7 @@ class QueueContractTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(error.exception.status_code, 429)
 
     async def test_queued_cancel_never_spawns_worker(self):
+        """Проверяет отмену ожидающей задачи без запуска дочернего процесса."""
         manager.ensure_queues()
         task = manager.create_task("https://youtu.be/queued")
         with patch.object(manager, "run_task", new_callable=AsyncMock) as run_task:
@@ -82,7 +90,9 @@ class QueueContractTest(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(task.runner)
 
     async def test_info_queue_dispatches_and_keeps_task_identity(self):
+        """Проверяет обработку очереди информации без замены объекта задачи."""
         async def fake_run(task):
+            """Имитирует успешное получение информации о видео."""
             task.status = task.stage = "ready"
             task.result = {"formats": []}
 
@@ -100,9 +110,11 @@ class QueueContractTest(unittest.IsolatedAsyncioTestCase):
                 await manager.shutdown_tasks(reaper)
 
     async def test_fast_queue_dispatches_fast_task_with_same_id(self):
+        """Проверяет передачу задачи в быструю очередь с прежним идентификатором."""
         seen = []
 
         async def fake_run(task):
+            """Запоминает параметры быстрой задачи и имитирует готовый результат."""
             seen.append((task.id, task.requested_fast, task.queue_name))
             task.status = task.stage = "ready"
             task.result = {"delivery_mode": "fast"}
@@ -121,9 +133,11 @@ class QueueContractTest(unittest.IsolatedAsyncioTestCase):
                 await manager.shutdown_tasks(reaper)
 
     async def test_fast_fallback_moves_same_task_to_file_queue(self):
+        """Проверяет переход к обычному скачиванию с сохранением объекта и ID задачи."""
         seen = []
 
         async def fake_run(task):
+            """Имитирует отказ быстрого режима и успех повторного обычного скачивания."""
             seen.append((task.id, task.requested_fast, task.queue_name))
             if task.requested_fast:
                 task.requested_fast = False
@@ -149,6 +163,7 @@ class QueueContractTest(unittest.IsolatedAsyncioTestCase):
                 await manager.shutdown_tasks(reaper)
 
     async def test_fast_response_hides_upstream_and_cancellation_closes_transfer(self):
+        """Проверяет скрытие данных источника и завершение передачи при отмене задачи."""
         task = manager.create_task("https://youtu.be/fast-response", requested_fast=True)
         task.status = task.stage = "ready"
         task.result = {
@@ -163,6 +178,7 @@ class QueueContractTest(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("Authorization", str(response.raw_headers))
 
         async def body():
+            """Имитирует непрерывный поток данных от источника."""
             while True:
                 yield b"chunk"
                 await asyncio.sleep(0)
@@ -170,6 +186,7 @@ class QueueContractTest(unittest.IsolatedAsyncioTestCase):
         response.body_iterator = body()
         started = asyncio.Event()
         async def send(message):
+            """Имитирует клиента, который остановился на получении тела ответа."""
             if message["type"] == "http.response.body":
                 started.set()
                 await asyncio.Event().wait()

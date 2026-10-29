@@ -1,23 +1,23 @@
 import asyncio
 import logging
 import mimetypes
-from typing import Literal
 from uuid import UUID
 import httpx
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
 
 from config import settings
-from database.db_tools import add_download_stat, add_proxy_download_success
-from services.media_platforms import detect_platform
-from services.media_tasks import (
+from media.statistics import add_download_stat
+from proxies.statistics import add_proxy_download_success
+from media.schemas import DownloadRequest, InfoRequest
+from media.platforms import detect_platform
+from media.tasks import (
     cancel_task, cleanup_directory, create_task, get_task, serialize_task,
 )
-from services.proxy_pool import get_proxy_url
-from services.rate_limiter import RateLimiter
-from services.media_formats import build_content_disposition
+from proxies.pool import get_proxy_url
+from rate_limiter import RateLimiter
+from media.formats import build_content_disposition
 
 
 media_router = APIRouter()
@@ -27,22 +27,8 @@ fast_limiter = RateLimiter(settings.fast_download_rate_limit_requests, settings.
 cancel_limiter = RateLimiter(120, 60)
 
 
-class InfoRequest(BaseModel):
-    url: str = Field(min_length=1, max_length=2048)
-    task_id: UUID | None = None
-
-
-class DownloadFormat(BaseModel):
-    height: int = Field(ge=1, le=4320)
-    fast: bool = False
-    kind: Literal["video", "audio"] = "video"
-
-
-class DownloadRequest(InfoRequest):
-    format: DownloadFormat
-
-
 def validate_url(url):
+    """Проверяет поддерживаемую платформу и преобразует ошибку ссылки в HTTP-ответ."""
     try:
         return detect_platform(url)
     except ValueError as error:
@@ -69,6 +55,7 @@ async def get_info(body: InfoRequest, request: Request, client_ip: str = Depends
 
 @media_router.post("/download-tasks")
 async def create_download(body: DownloadRequest, request: Request):
+    """Проверяет лимит и ссылку, создаёт задачу и возвращает её состояние."""
     client_ip = (fast_limiter if body.format.fast else download_limiter)(request)
     validate_url(body.url)
     # Fast и file задачи расходятся по отдельным очередям после создания.
@@ -80,11 +67,13 @@ async def create_download(body: DownloadRequest, request: Request):
 
 @media_router.get("/download-tasks/{task_id}")
 async def status(task_id: UUID):
+    """Возвращает текущее состояние задачи и обновляет время обращения клиента."""
     return serialize_task(get_task(task_id))
 
 
 @media_router.delete("/download-tasks/{task_id}")
 async def cancel(task_id: UUID, client_ip: str = Depends(cancel_limiter)):
+    """Отменяет задачу и возвращает состояние после завершения её работы."""
     return serialize_task(await cancel_task(task_id))
 
 
@@ -92,6 +81,7 @@ class ManagedFileResponse(StreamingResponse):
     """Отмена из API прерывает и уже начавшуюся HTTP-передачу файла."""
 
     def __init__(self, task, path):
+        """Подготавливает поток локального файла и заголовки скачивания."""
         self.task = task
         self.finished = False
         super().__init__(self.chunks(path), media_type=mimetypes.guess_type(path.name)[0] or "application/octet-stream",
@@ -99,6 +89,7 @@ class ManagedFileResponse(StreamingResponse):
                                   "Content-Length": str(path.stat().st_size)})
 
     async def chunks(self, path):
+        """Читает локальный файл порциями до конца или сигнала отмены."""
         # Небольшие чтения, без накопления видео в памяти приложения.
         with path.open("rb") as file:
             while not self.task.cancel.is_set():
@@ -110,6 +101,7 @@ class ManagedFileResponse(StreamingResponse):
                 await asyncio.sleep(0)
 
     async def __call__(self, scope, receive, send):
+        """Управляет передачей файла, отменой, очисткой и записью статистики успеха."""
         task = self.task
         task.streaming = True
         sending = asyncio.create_task(super().__call__(scope, receive, send))
@@ -143,6 +135,7 @@ class ManagedFastResponse(StreamingResponse):
     """Проксирует fast-поток и закрывает upstream при отмене клиента или задачи."""
 
     def __init__(self, task):
+        """Подготавливает прямой поток через сервер, скрывая адрес и заголовки источника."""
         self.task = task
         self.finished = False
         result = task.result
@@ -162,6 +155,7 @@ class ManagedFastResponse(StreamingResponse):
                          headers=response_headers)
 
     async def chunks(self, url, headers, source_address, proxy_url):
+        """Передаёт порции от источника через выбранный IP и закрывает соединение при выходе."""
         timeout = httpx.Timeout(settings.media_task_timeout_sec)
         transport = httpx.AsyncHTTPTransport(local_address=source_address, proxy=proxy_url)
         async with httpx.AsyncClient(follow_redirects=True, timeout=timeout, transport=transport) as client:
@@ -174,6 +168,7 @@ class ManagedFastResponse(StreamingResponse):
                 self.finished = True
 
     async def __call__(self, scope, receive, send):
+        """Управляет прямой передачей, отменой, очисткой и записью статистики успеха."""
         task = self.task
         task.streaming = True
         sending = asyncio.create_task(super().__call__(scope, receive, send))
@@ -206,6 +201,7 @@ class ManagedFastResponse(StreamingResponse):
 
 @media_router.get("/download-tasks/{task_id}/download")
 async def download(task_id: UUID):
+    """Проверяет готовность задачи и выбирает передачу файла или прямого потока."""
     task = get_task(task_id)
     if task.status != "ready" or task.mode != "download":
         raise HTTPException(409, "Файл ещё не готов или загрузка уже завершена")

@@ -13,11 +13,11 @@ from uuid import UUID, uuid4
 from fastapi import HTTPException
 
 from config import BASE_DIR, settings
-from database.db_tools import add_proxy_info_success, add_proxy_ip_error
-from services.media_platforms import detect_platform
-from services.process_tree import WindowsJob, stop_process_tree
-from services.media_messages import get_stage_message
-from services.proxy_pool import (
+from proxies.statistics import add_proxy_info_success, add_proxy_ip_error
+from media.platforms import detect_platform
+from process_tree import WindowsJob, stop_process_tree
+from media.messages import get_stage_message
+from proxies.pool import (
     get_proxy_key, get_proxy_url, max_proxy_attempts, put_on_cooldown,
 )
 
@@ -29,6 +29,7 @@ TERMINAL = {"failed", "cancelled", "completed"}
 
 @dataclass
 class MediaTask:
+    """Состояние задачи получения информации, подготовки и передачи медиа."""
     id: str
     url: str = ""
     mode: str = "download"
@@ -60,6 +61,7 @@ class MediaTask:
 
     @property
     def directory(self):
+        """Возвращает отдельную временную папку этой задачи."""
         return TASK_ROOT / self.id
 
 
@@ -69,6 +71,7 @@ WORKERS: list[asyncio.Task] = []
 
 
 def normalize_id(task_id):
+    """Проверяет UUID задачи и приводит его к строке без дефисов."""
     try:
         return UUID(str(task_id)).hex
     except ValueError:
@@ -90,6 +93,7 @@ def cleanup_directory(task):
 
 
 def get_task(task_id, touch=True):
+    """Находит задачу и при необходимости обновляет время последнего обращения к ней."""
     task = TASKS.get(normalize_id(task_id))
     if not task:
         raise HTTPException(404, "Задача не найдена")
@@ -99,6 +103,7 @@ def get_task(task_id, touch=True):
 
 
 def serialize_task(task):
+    """Собирает публичное состояние задачи для ответа API без внутренних данных источника."""
     data = {"task_id": task.id, "status": task.status, "stage": task.stage,
             "message": task.error or get_stage_message(task.stage), "progress": task.progress,
             "error": task.error, "error_code": 500 if task.status == "failed" else None,
@@ -114,6 +119,7 @@ def serialize_task(task):
 
 
 def queue_position(task):
+    """Вычисляет позицию ожидания с учётом занятых и доступных обработчиков очереди."""
     # Очередь живёт только в одном event loop; _queue читается без await.
     queue = QUEUES.get(task.queue_name)
     if queue is None:
@@ -139,6 +145,7 @@ def queue_position(task):
 
 
 def ensure_queues():
+    """Создаёт очереди информации, быстрой передачи и обычного скачивания, если их ещё нет."""
     if QUEUES:
         return
     QUEUES.update({
@@ -150,6 +157,7 @@ def ensure_queues():
 
 def create_task(url, height="720", mode="download", task_id=None, *, requested_fast=False,
                 ip="unknown", user_agent=None, kind="video"):
+    """Проверяет лимиты и идентификатор, затем сохраняет задачу и ставит её в нужную очередь."""
     ensure_queues()
     platform = detect_platform(url)
     task_id = normalize_id(task_id or uuid4())
@@ -184,6 +192,7 @@ def create_task(url, height="720", mode="download", task_id=None, *, requested_f
 
 
 async def cancel_task(task_id):
+    """Отменяет ожидающую или работающую задачу и дожидается освобождения её ресурсов."""
     task_id = normalize_id(task_id)
     task = TASKS.get(task_id)
     if task is None:
@@ -224,6 +233,7 @@ async def cancel_task(task_id):
 
 
 async def read_events(process, task):
+    """Читает события дочернего процесса, обновляет задачу и возвращает результат работы."""
     result = None
     error_message = "Не удалось получить видео. Попробуйте ещё раз"
     while line := await process.stdout.readline():
@@ -246,12 +256,14 @@ async def read_events(process, task):
 
 
 async def drain_errors(process, task):
+    """Читает stderr процесса и пишет в журнал ограниченные по длине строки."""
     # Ограниченный вывод в журнал; не накапливаем stderr длинного скачивания в RAM.
     async for line in process.stderr:
         logger.warning("Media worker %s: %s", task.id, line.decode("utf-8", errors="replace").rstrip()[:2000])
 
 
 async def queue_worker(queue_name):
+    """Обрабатывает задачи одной очереди и повторно ставит их при смене IP или режима."""
     queue = QUEUES[queue_name]
     while True:
         task = await queue.get()
@@ -287,6 +299,7 @@ async def queue_worker(queue_name):
 
 
 async def run_task(task):
+    """Запускает процесс задачи, обрабатывает результат и повторы, затем освобождает ресурсы."""
     process = job = None
     readers = []
     succeeded = False
@@ -301,7 +314,7 @@ async def run_task(task):
         task.directory.mkdir(parents=True, exist_ok=False)
         # На Linux отдельная session включает yt-dlp, ffmpeg и JS runtime.
         process = await asyncio.create_subprocess_exec(
-            sys.executable, "-u", "-m", "services.media_worker", cwd=BASE_DIR,
+            sys.executable, "-u", "-m", "media.worker", cwd=BASE_DIR,
             stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE, limit=1024 * 1024,
             start_new_session=os.name != "nt",
@@ -424,6 +437,7 @@ async def reap_tasks():
 
 
 async def start_tasks():
+    """Создаёт очереди и обработчики, очищает старые папки задач и запускает фоновую очистку."""
     TASK_ROOT.mkdir(parents=True, exist_ok=True)
     QUEUES.clear()
     QUEUES.update({
@@ -449,6 +463,7 @@ async def start_tasks():
 
 
 async def shutdown_tasks(reaper):
+    """Останавливает фоновую очистку, отменяет задачи и завершает обработчики очередей."""
     reaper.cancel()
     await asyncio.gather(reaper, return_exceptions=True)
     await asyncio.gather(*(cancel_task(task.id) for task in list(TASKS.values())))

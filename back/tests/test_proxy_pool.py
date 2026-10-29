@@ -4,16 +4,20 @@ from unittest.mock import patch
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from database import db_tools
-from database.database import Base
-from services import proxy_pool
+from proxies import statistics as db_tools
+from database import Base
+from proxies.models import ProxyPlatformStatModel
+from proxies import pool as proxy_pool
 
 
 class ProxyPoolTest(unittest.TestCase):
+    """Проверки настройки, выбора и временного исключения исходящих IP."""
     def tearDown(self):
+        """Возвращает пул к прямому подключению после каждой проверки."""
         proxy_pool.configure("")
 
     def test_main_and_env_proxies_are_configured_without_duplicate_objects(self):
+        """Проверяет регистрацию прямого подключения и двух отдельных прокси."""
         proxy_pool.configure("socks5://first,socks5://second")
 
         self.assertEqual(proxy_pool.proxy_urls, {
@@ -23,6 +27,7 @@ class ProxyPoolTest(unittest.TestCase):
         })
 
     def test_cooldown_removes_proxy_from_current_round(self):
+        """Проверяет исключение заблокированного прокси из текущего круга."""
         proxy_pool.configure("socks5://first")
         proxy_pool.available[:] = ["proxy_1", "main"]
 
@@ -32,15 +37,17 @@ class ProxyPoolTest(unittest.TestCase):
         self.assertIn("proxy_1", proxy_pool.cooldown_until)
 
     def test_cooled_down_proxy_returns_in_next_round(self):
+        """Проверяет возврат прокси после окончания времени ожидания."""
         proxy_pool.configure("socks5://first")
-        with patch("services.proxy_pool.monotonic", return_value=100):
+        with patch("proxies.pool.monotonic", return_value=100):
             proxy_pool.put_on_cooldown("proxy_1")
-        with patch("services.proxy_pool.monotonic", return_value=100 + proxy_pool.settings.media_proxy_cooldown_sec):
+        with patch("proxies.pool.monotonic", return_value=100 + proxy_pool.settings.media_proxy_cooldown_sec):
             proxy_pool.start_new_round()
 
         self.assertIn("proxy_1", proxy_pool.available)
 
     def test_main_is_used_when_every_ip_is_in_cooldown(self):
+        """Проверяет запасное прямое подключение при временной блокировке всех IP."""
         proxy_pool.configure("socks5://first")
         proxy_pool.put_on_cooldown("main")
         proxy_pool.put_on_cooldown("proxy_1")
@@ -49,7 +56,9 @@ class ProxyPoolTest(unittest.TestCase):
 
 
 class ProxyStatsTest(unittest.IsolatedAsyncioTestCase):
+    """Проверки сохранения статистики прокси в отдельной базе в памяти."""
     async def test_clean_database_creates_and_updates_proxy_statistics(self):
+        """Проверяет создание строки статистики и увеличение счётчиков событий."""
         engine = create_async_engine("sqlite+aiosqlite:///:memory:")
         session_factory = async_sessionmaker(engine, expire_on_commit=False)
         try:

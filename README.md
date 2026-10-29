@@ -4,6 +4,19 @@
 Android-клиент обращается к существующему API и не требует изменений сервера.
 Установка, фоновое скачивание и локальная сборка APK описаны в [mobile/README.md](mobile/README.md).
 
+## Структура backend
+
+Код в `back/` разделён по функциональным областям:
+
+- `media/` — API скачивания, схемы, задачи, worker, форматы и статистика скачиваний.
+- `proxies/` — выбор исходящего IP, cooldown и статистика прокси по платформам.
+- `deployment/` — GitHub webhook и выполнение деплоя.
+- `database.py` — подключение к БД, общая Base и жизненный цикл приложения.
+- `config.py`, `rate_limiter.py`, `process_tree.py` — общие настройки и механизмы.
+- `tests/` — проверки backend и локальные диагностические скрипты.
+
+Точка входа остаётся `app.py`; worker запускается как `python -m media.worker` из `back/`.
+
 Продакшен-гайд для Linux-сервера (Ubuntu/Debian) с backend + frontend, `systemd`, `nginx`, HTTPS и нормальным повторным деплоем.
 
 ## Структура размещения
@@ -340,7 +353,7 @@ curl -sS -X POST "http://127.0.0.1:8000/api/media/info" -H "Content-Type: applic
 - `HTTP 502` от nginx:
   Проверь `systemctl status videodownloader-backend` и `journalctl -u videodownloader-backend -f`.
 - Только один формат в `/info`:
-  Проверь настройки и версию `yt-dlp` в `back/services/ytdlp_service.py`.
+  Проверь настройки и версию `yt-dlp` в `back/media/ytdlp.py`.
 - TikTok не отдаёт метаданные:
   Убедись, что зависимости установлены из `back/requirements.txt`: TikTok использует
   `curl-cffi` для имитации браузера, и cookies не заменяют этот пакет.
