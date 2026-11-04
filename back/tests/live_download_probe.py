@@ -53,7 +53,7 @@ async def probe(url, mode):
     height = min(int(item["height"]) for item in candidates)
     await manager.cancel_task(info.id)
 
-    task_args = {"height": height, "requested_fast": mode == "fast"}
+    task_args = {"quality": height, "requested_fast": mode == "fast"}
     if "kind" in inspect.signature(manager.create_task).parameters:
         task_args["kind"] = "video"
     task = manager.create_task(url, **task_args)
