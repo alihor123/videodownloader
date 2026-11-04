@@ -1,0 +1,98 @@
+@startuml
+skinparam linetype ortho
+allowmixing
+top to bottom direction
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 15
+skinparam packageStyle rectangle
+skinparam nodesep 85
+skinparam ranksep 100
+skinparam ArrowColor #34495E
+skinparam ArrowThickness 1.3
+skinparam classAttributeIconSize 0
+skinparam rectangleBackgroundColor #EAF3FC
+skinparam classBackgroundColor #FFF2D6
+hide empty members
+hide circle
+title Выполнение операции в worker — media/worker.py
+
+  rectangle "emit()\nОтправка JSON-события" as F_emit
+  class "Logger\n<size:12>Логгер yt-dlp</size>" as C_Logger {
+  }
+  rectangle "get_user_error()\nСообщение об ошибке клиенту" as F_get_user_error
+  rectangle "is_proxy_or_ip_error()\nПроверка сетевой ошибки IP" as F_is_proxy_or_ip_error
+  rectangle "get_proxy_error_kind()\nТип ошибки IP для статистики" as F_get_proxy_error_kind
+  rectangle "get_platform_cookie_file()\nВыбор cookies платформы" as F_get_platform_cookie_file
+  rectangle "should_retry_without_youtube_cookies()\nПроверка повтора без cookies" as F_should_retry_without_youtube_cookies
+  rectangle "get_fast_headers()\nЗаголовки прямого потока" as F_get_fast_headers
+  rectangle "probe_fast_source()\nПроверка доступности потока" as F_probe_fast_source
+  rectangle "get_download_track()\nОпределение текущей дорожки" as F_get_download_track
+  rectangle "get_download_progress()\nЭтап и процент скачивания" as F_get_download_progress
+  rectangle "main()\nВыполнение операции worker" as F_main
+
+class "Settings\n(config.py)" as C_Settings #F2F4F7
+rectangle "build_format_list()\nСписок доступных качеств\n(media/formats.py)" as F_build_format_list #F2F4F7
+rectangle "detect_platform()\nОпределение видеоплатформы\n(media/platforms.py)" as F_detect_platform #F2F4F7
+rectangle "extract_info()\nВызов yt-dlp\n(media/ytdlp.py)" as F_extract_info #F2F4F7
+rectangle "format_duration()\nДлительность для интерфейса\n(media/formats.py)" as F_format_duration #F2F4F7
+rectangle "format_views()\nФорматирование просмотров\n(media/formats.py)" as F_format_views #F2F4F7
+rectangle "get_download_ydl_opts()\nНастройки скачивания yt-dlp\n(media/ytdlp.py)" as F_get_download_ydl_opts #F2F4F7
+rectangle "get_info_ydl_opts()\nНастройки получения метаданных\n(media/ytdlp.py)" as F_get_info_ydl_opts #F2F4F7
+rectangle "get_output_ext()\nРасширение MP3 или MP4\n(media/formats.py)" as F_get_output_ext #F2F4F7
+rectangle "get_safe_title()\nБезопасное имя файла\n(media/formats.py)" as F_get_safe_title #F2F4F7
+rectangle "normalize_platform_url()\nПодготовка ссылки\n(media/platforms.py)" as F_normalize_platform_url #F2F4F7
+rectangle "select_fast_format()\nВыбор прямого потока\n(media/formats.py)" as F_select_fast_format #F2F4F7
+
+F_get_download_progress -[dashed,norank]-> F_get_download_track
+F_get_platform_cookie_file -[dashed,norank]-> C_Settings
+F_main -[dashed,norank]-> C_Logger
+F_main -[dashed,norank]-> F_build_format_list
+F_main -[dashed,norank]-> F_detect_platform
+F_main -[dashed,norank]-> F_emit
+F_main -[dashed,norank]-> F_extract_info
+F_main -[dashed,norank]-> F_format_duration
+F_main -[dashed,norank]-> F_format_views
+F_main -[dashed,norank]-> F_get_download_progress
+F_main -[dashed,norank]-> F_get_download_ydl_opts
+F_main -[dashed,norank]-> F_get_fast_headers
+F_main -[dashed,norank]-> F_get_info_ydl_opts
+F_main -[dashed,norank]-> F_get_output_ext
+F_main -[dashed,norank]-> F_get_platform_cookie_file
+F_main -[dashed,norank]-> F_get_safe_title
+F_main -[dashed,norank]-> F_normalize_platform_url
+F_main -[dashed,norank]-> F_probe_fast_source
+F_main -[dashed,norank]-> F_select_fast_format
+F_main -[dashed,norank]-> F_should_retry_without_youtube_cookies
+
+note bottom of F_get_user_error
+  Обработчики ошибок вызываются
+  в блоке запуска worker.
+end note
+' Скрытые линии задают только расположение, а не зависимости кода.
+F_get_user_error -[hidden]right-> F_is_proxy_or_ip_error
+F_is_proxy_or_ip_error -[hidden]right-> F_get_proxy_error_kind
+F_get_proxy_error_kind -[hidden]right-> C_Logger
+C_Logger -[hidden]right-> F_emit
+F_get_info_ydl_opts -[hidden]right-> F_get_platform_cookie_file
+F_get_platform_cookie_file -[hidden]right-> F_should_retry_without_youtube_cookies
+F_should_retry_without_youtube_cookies -[hidden]right-> F_get_download_ydl_opts
+F_get_download_ydl_opts -[hidden]right-> F_extract_info
+F_format_duration -[hidden]right-> F_format_views
+F_format_views -[hidden]right-> F_main
+F_main -[hidden]right-> F_get_output_ext
+F_get_output_ext -[hidden]right-> F_get_safe_title
+F_detect_platform -[hidden]right-> F_normalize_platform_url
+F_normalize_platform_url -[hidden]right-> F_get_fast_headers
+F_get_fast_headers -[hidden]right-> F_select_fast_format
+F_select_fast_format -[hidden]right-> F_build_format_list
+F_get_download_progress -[hidden]right-> F_get_download_track
+F_get_download_track -[hidden]right-> F_probe_fast_source
+F_probe_fast_source -[hidden]right-> C_Settings
+F_get_user_error -[hidden]down-> F_get_info_ydl_opts
+F_get_info_ydl_opts -[hidden]down-> F_format_duration
+F_format_duration -[hidden]down-> F_detect_platform
+F_detect_platform -[hidden]down-> F_get_download_progress
+' Создание объектов: F_main -> C_Logger
+@enduml

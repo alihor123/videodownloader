@@ -1,0 +1,63 @@
+@startuml
+!pragma layout elk
+allowmixing
+left to right direction
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 15
+skinparam packageStyle rectangle
+skinparam nodesep 85
+skinparam ranksep 100
+skinparam ArrowColor #34495E
+skinparam ArrowThickness 1.3
+skinparam classAttributeIconSize 0
+skinparam rectangleBackgroundColor #EAF3FC
+skinparam classBackgroundColor #FFF2D6
+hide empty members
+hide circle
+title Настройки сервиса — config.py
+
+package "config.py" as OWN {
+  rectangle "resolve_optional_path()\nПолучение полного пути" as F_resolve_optional_path
+  class "Settings\n<size:12>Настройки из окружения и .env</size>" as C_Settings {
+    database_name : str
+    ffmpeg_path : Path
+    youtube_cookies_file : Path | None
+    rutube_cookies_file : Path | None
+    vk_cookies_file : Path | None
+    twitter_cookies_file : Path | None
+    tiktok_cookies_file : Path | None
+    instagram_cookies_file : Path | None
+    ytdlp_po_token : str | None
+    enable_docs : bool
+    trust_proxy_headers : bool
+    media_proxies : SecretStr | None
+    media_proxy_cooldown_sec : int
+    info_rate_limit_requests : int
+    info_rate_limit_period_sec : int
+    file_download_rate_limit_requests : int
+    file_download_rate_limit_period_sec : int
+    fast_download_rate_limit_requests : int
+    fast_download_rate_limit_period_sec : int
+    info_queue_size : int
+    fast_queue_size : int
+    file_queue_size : int
+    info_worker_count : int
+    fast_worker_count : int
+    file_worker_count : int
+    max_queue_total : int
+    max_queue_per_ip : int
+    temp_file_max_age_sec : int
+    media_client_timeout_sec : int
+    media_info_timeout_sec : int
+    media_task_timeout_sec : int
+    media_ready_timeout_sec : int
+    media_max_bytes : int
+    max_retained_media_tasks : int
+  }
+}
+
+
+C_Settings ..> F_resolve_optional_path
+@enduml

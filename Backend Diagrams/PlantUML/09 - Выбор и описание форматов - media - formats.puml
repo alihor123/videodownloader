@@ -1,0 +1,81 @@
+@startuml
+skinparam linetype ortho
+allowmixing
+top to bottom direction
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 15
+skinparam packageStyle rectangle
+skinparam nodesep 85
+skinparam ranksep 100
+skinparam ArrowColor #34495E
+skinparam ArrowThickness 1.3
+skinparam classAttributeIconSize 0
+skinparam rectangleBackgroundColor #EAF3FC
+skinparam classBackgroundColor #FFF2D6
+hide empty members
+hide circle
+title Выбор и описание форматов — media/formats.py
+
+  rectangle "get_filesize()\nРазмер медиаформата" as F_get_filesize
+  rectangle "has_video_stream()\nПроверка видеодорожки" as F_has_video_stream
+  rectangle "has_audio_stream()\nПроверка аудиодорожки" as F_has_audio_stream
+  rectangle "is_muxed_format()\nВидео и звук в одном формате" as F_is_muxed_format
+  rectangle "is_fast_direct_format()\nПроверка прямой передачи" as F_is_fast_direct_format
+  rectangle "get_fast_format_heights()\nКачества для прямой передачи" as F_get_fast_format_heights
+  rectangle "select_fast_format()\nВыбор прямого потока" as F_select_fast_format
+  rectangle "get_audio_bitrate()\nБитрейт аудиодорожки" as F_get_audio_bitrate
+  rectangle "get_display_height()\nОтображаемое качество видео" as F_get_display_height
+  rectangle "format_filesize()\nРазмер файла с единицами" as F_format_filesize
+  rectangle "format_duration()\nДлительность для интерфейса" as F_format_duration
+  rectangle "format_views()\nФорматирование просмотров" as F_format_views
+  rectangle "format_audio_quality()\nПодпись качества аудио" as F_format_audio_quality
+  rectangle "get_safe_title()\nБезопасное имя файла" as F_get_safe_title
+  rectangle "is_audio_download()\nПроверка выбора аудио" as F_is_audio_download
+  rectangle "get_audio_download_bitrate()\nВыбранный битрейт аудио" as F_get_audio_download_bitrate
+  rectangle "get_output_ext()\nРасширение MP3 или MP4" as F_get_output_ext
+  rectangle "get_video_height_range_filter()\nДиапазон качества видео" as F_get_video_height_range_filter
+  rectangle "get_download_format()\nСелектор форматов yt-dlp" as F_get_download_format
+  rectangle "build_format_list()\nСписок доступных качеств" as F_build_format_list
+  rectangle "build_content_disposition()\nЗаголовок имени файла" as F_build_content_disposition
+
+
+F_build_format_list -[dashed,norank]-> F_format_audio_quality
+F_build_format_list -[dashed,norank]-> F_format_filesize
+F_build_format_list -[dashed,norank]-> F_get_audio_bitrate
+F_build_format_list -[dashed,norank]-> F_get_display_height
+F_build_format_list -[dashed,norank]-> F_get_fast_format_heights
+F_build_format_list -[dashed,norank]-> F_get_filesize
+F_build_format_list -[dashed,norank]-> F_has_audio_stream
+F_build_format_list -[dashed,norank]-> F_has_video_stream
+F_get_audio_download_bitrate -[dashed,norank]-> F_is_audio_download
+F_get_download_format -[dashed,norank]-> F_get_video_height_range_filter
+F_get_fast_format_heights -[dashed,norank]-> F_is_fast_direct_format
+F_is_fast_direct_format -[dashed,norank]-> F_is_muxed_format
+F_is_muxed_format -[dashed,norank]-> F_has_audio_stream
+F_is_muxed_format -[dashed,norank]-> F_has_video_stream
+F_select_fast_format -[dashed,norank]-> F_get_filesize
+F_select_fast_format -[dashed,norank]-> F_is_fast_direct_format
+' Скрытые линии задают только расположение, а не зависимости кода.
+F_select_fast_format -[hidden]right-> F_build_format_list
+F_build_format_list -[hidden]right-> F_get_download_format
+F_is_fast_direct_format -[hidden]right-> F_get_fast_format_heights
+F_get_fast_format_heights -[hidden]right-> F_get_video_height_range_filter
+F_is_muxed_format -[hidden]right-> F_get_filesize
+F_get_filesize -[hidden]right-> F_get_display_height
+F_has_video_stream -[hidden]right-> F_has_audio_stream
+F_has_audio_stream -[hidden]right-> F_get_audio_bitrate
+F_format_audio_quality -[hidden]right-> F_format_filesize
+F_format_filesize -[hidden]right-> F_get_audio_download_bitrate
+F_format_duration -[hidden]right-> F_format_views
+F_format_views -[hidden]right-> F_is_audio_download
+F_get_safe_title -[hidden]right-> F_build_content_disposition
+F_build_content_disposition -[hidden]right-> F_get_output_ext
+F_select_fast_format -[hidden]down-> F_is_fast_direct_format
+F_is_fast_direct_format -[hidden]down-> F_is_muxed_format
+F_is_muxed_format -[hidden]down-> F_has_video_stream
+F_has_video_stream -[hidden]down-> F_format_audio_quality
+F_format_audio_quality -[hidden]down-> F_format_duration
+F_format_duration -[hidden]down-> F_get_safe_title
+@enduml

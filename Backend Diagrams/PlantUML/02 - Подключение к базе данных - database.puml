@@ -1,0 +1,34 @@
+@startuml
+!pragma layout elk
+allowmixing
+left to right direction
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 15
+skinparam packageStyle rectangle
+skinparam nodesep 85
+skinparam ranksep 100
+skinparam ArrowColor #34495E
+skinparam ArrowThickness 1.3
+skinparam classAttributeIconSize 0
+skinparam rectangleBackgroundColor #EAF3FC
+skinparam classBackgroundColor #FFF2D6
+hide empty members
+hide circle
+title Подключение к базе данных — database.py
+
+package "database.py" as OWN {
+  rectangle "get_session()\nОткрытие сессии БД" as F_get_session
+  class "Base\n<size:12>База моделей таблиц</size>" as C_Base {
+  }
+  rectangle "lifespan()\nЗапуск и остановка сервиса" as F_lifespan
+}
+
+rectangle "shutdown_tasks()\nОстановка всех задач\n(media/tasks.py)" as F_shutdown_tasks #F2F4F7
+rectangle "start_tasks()\nЗапуск очередей и очистки\n(media/tasks.py)" as F_start_tasks #F2F4F7
+
+F_lifespan ..> C_Base
+F_lifespan ..> F_shutdown_tasks
+F_lifespan ..> F_start_tasks
+@enduml

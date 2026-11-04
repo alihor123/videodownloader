@@ -1,0 +1,31 @@
+@startuml
+!pragma layout elk
+allowmixing
+left to right direction
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 15
+skinparam packageStyle rectangle
+skinparam nodesep 85
+skinparam ranksep 100
+skinparam ArrowColor #34495E
+skinparam ArrowThickness 1.3
+skinparam classAttributeIconSize 0
+skinparam rectangleBackgroundColor #EAF3FC
+skinparam classBackgroundColor #FFF2D6
+hide empty members
+hide circle
+title Остановка дерева процессов — process_tree.py
+
+package "process_tree.py" as OWN {
+  class "WindowsJob\n<size:12>Группа процессов Windows</size>" as C_WindowsJob {
+    kernel : WinDLL
+    handle : HANDLE | None
+  }
+  rectangle "stop_process_tree()\nОстановка worker и потомков" as F_stop_process_tree
+}
+
+
+F_stop_process_tree ..> C_WindowsJob
+@enduml

@@ -1,0 +1,29 @@
+@startuml
+!pragma layout elk
+allowmixing
+left to right direction
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 15
+skinparam packageStyle rectangle
+skinparam nodesep 85
+skinparam ranksep 100
+skinparam ArrowColor #34495E
+skinparam ArrowThickness 1.3
+skinparam classAttributeIconSize 0
+skinparam rectangleBackgroundColor #EAF3FC
+skinparam classBackgroundColor #FFF2D6
+hide empty members
+hide circle
+title Запись истории скачиваний — media/statistics.py
+
+package "media/statistics.py" as OWN {
+  rectangle "add_download_stat()\nЗапись успешной передачи" as F_add_download_stat
+}
+
+class "DownloadModel\n(media/models.py)" as C_DownloadModel #F2F4F7
+
+F_add_download_stat ..> C_DownloadModel
+' Создание объектов: F_add_download_stat -> C_DownloadModel
+@enduml

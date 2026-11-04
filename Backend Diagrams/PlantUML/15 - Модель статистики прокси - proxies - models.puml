@@ -1,0 +1,39 @@
+@startuml
+!pragma layout elk
+allowmixing
+left to right direction
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 15
+skinparam packageStyle rectangle
+skinparam nodesep 85
+skinparam ranksep 100
+skinparam ArrowColor #34495E
+skinparam ArrowThickness 1.3
+skinparam classAttributeIconSize 0
+skinparam rectangleBackgroundColor #EAF3FC
+skinparam classBackgroundColor #FFF2D6
+hide empty members
+hide circle
+title Модель статистики прокси — proxies/models.py
+
+package "proxies/models.py" as OWN {
+  class "ProxyPlatformStatModel\n<size:12>Статистика прокси</size>" as C_ProxyPlatformStatModel {
+    proxy_endpoint : str
+    platform : str
+    info_success_count : int
+    download_success_count : int
+    info_ip_error_count : int
+    download_ip_error_count : int
+    last_info_success_at : str | None
+    last_download_success_at : str | None
+    last_ip_error_at : str | None
+    last_ip_error_kind : str | None
+  }
+}
+
+class "Base\n(database.py)" as C_Base #F2F4F7
+
+C_ProxyPlatformStatModel --|> C_Base
+@enduml

@@ -1,0 +1,159 @@
+@startuml
+skinparam linetype ortho
+allowmixing
+top to bottom direction
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 15
+skinparam packageStyle rectangle
+skinparam nodesep 85
+skinparam ranksep 100
+skinparam ArrowColor #34495E
+skinparam ArrowThickness 1.3
+skinparam classAttributeIconSize 0
+skinparam rectangleBackgroundColor #EAF3FC
+skinparam classBackgroundColor #FFF2D6
+hide empty members
+hide circle
+title Управление задачами — media/tasks.py
+
+  class "MediaTask\n<size:12>Состояние операции</size>" as C_MediaTask {
+    id : str
+    url : str
+    mode : str
+    requested_fast : bool
+    delivery_mode : str
+    format_kind : str
+    height : str
+    platform : str
+    status : str
+    stage : str
+    progress : int | None
+    error : str | None
+    result : dict | None
+    created : float
+    touched : float
+    ready_at : float | None
+    cancel : asyncio.Event
+    runner : asyncio.Task | None
+    streaming : bool
+    transfer_done : asyncio.Event
+    ip : str
+    user_agent : str | None
+    queue_name : str
+    fallback_requested : bool
+    proxy_key : str | None
+    proxy_attempts : int
+    retry_with_another_proxy : bool
+    proxy_error_kind : str | None
+    /directory : Path
+  }
+  rectangle "normalize_id()\nПроверка и нормализация UUID" as F_normalize_id
+  rectangle "cleanup_directory()\nУдаление папки задачи" as F_cleanup_directory
+  rectangle "get_task()\nПоиск задачи по UUID" as F_get_task
+  rectangle "serialize_task()\nСостояние задачи для API" as F_serialize_task
+  rectangle "queue_position()\nПозиция задачи в очереди" as F_queue_position
+  rectangle "ensure_queues()\nСоздание очередей" as F_ensure_queues
+  rectangle "create_task()\nСоздание задачи в очереди" as F_create_task
+  rectangle "cancel_task()\nОтмена и ожидание остановки" as F_cancel_task
+  rectangle "read_events()\nЧтение событий worker" as F_read_events
+  rectangle "drain_errors()\nЗапись stderr worker в лог" as F_drain_errors
+  rectangle "queue_worker()\nОбработка очереди задач" as F_queue_worker
+  rectangle "run_task()\nУправление процессом worker" as F_run_task
+  rectangle "reap_tasks()\nПроверка лимитов и очистка" as F_reap_tasks
+  rectangle "start_tasks()\nЗапуск очередей и очистки" as F_start_tasks
+  rectangle "shutdown_tasks()\nОстановка всех задач" as F_shutdown_tasks
+
+class "Settings\n(config.py)" as C_Settings #F2F4F7
+class "WindowsJob\n(process_tree.py)" as C_WindowsJob #F2F4F7
+rectangle "add_proxy_info_success()\nУчёт успешных метаданных\n(proxies/statistics.py)" as F_add_proxy_info_success #F2F4F7
+rectangle "add_proxy_ip_error()\nУчёт ошибки исходящего IP\n(proxies/statistics.py)" as F_add_proxy_ip_error #F2F4F7
+rectangle "detect_platform()\nОпределение видеоплатформы\n(media/platforms.py)" as F_detect_platform #F2F4F7
+rectangle "get_proxy_key()\nВыбор следующего IP\n(proxies/pool.py)" as F_get_proxy_key #F2F4F7
+rectangle "get_proxy_url()\nURL выбранного прокси\n(proxies/pool.py)" as F_get_proxy_url #F2F4F7
+rectangle "get_stage_message()\nТекст этапа для клиента\n(media/messages.py)" as F_get_stage_message #F2F4F7
+rectangle "max_proxy_attempts()\nЧисло доступных исходящих IP\n(proxies/pool.py)" as F_max_proxy_attempts #F2F4F7
+rectangle "put_on_cooldown()\nВременное исключение IP\n(proxies/pool.py)" as F_put_on_cooldown #F2F4F7
+rectangle "stop_process_tree()\nОстановка worker и потомков\n(process_tree.py)" as F_stop_process_tree #F2F4F7
+component "media/worker.py\nОтдельный процесс" as P_media_worker_py #F2F4F7
+
+F_cancel_task -[dashed,norank]-> C_MediaTask
+F_cancel_task -[dashed,norank]-> C_Settings
+F_cancel_task -[dashed,norank]-> F_cleanup_directory
+F_cancel_task -[dashed,norank]-> F_normalize_id
+F_cleanup_directory -[dashed,norank]-> C_MediaTask
+F_create_task -[dashed,norank]-> C_MediaTask
+F_create_task -[dashed,norank]-> C_Settings
+F_create_task -[dashed,norank]-> F_detect_platform
+F_create_task -[dashed,norank]-> F_ensure_queues
+F_create_task -[dashed,norank]-> F_normalize_id
+F_drain_errors -[dashed,norank]-> C_MediaTask
+F_ensure_queues -[dashed,norank]-> C_Settings
+F_get_task -[dashed,norank]-> F_normalize_id
+F_queue_position -[dashed,norank]-> C_MediaTask
+F_queue_position -[dashed,norank]-> C_Settings
+F_queue_worker -[dashed,norank]-> F_run_task
+F_read_events -[dashed,norank]-> C_MediaTask
+F_reap_tasks -[dashed,norank]-> C_Settings
+F_reap_tasks -[dashed,norank]-> F_cancel_task
+F_reap_tasks -[dashed,norank]-> F_cleanup_directory
+F_run_task -[dashed,norank]-> C_MediaTask
+F_run_task -[dashed,norank]-> C_Settings
+F_run_task -[dashed,norank]-> C_WindowsJob
+F_run_task -[dashed,norank]-> F_add_proxy_info_success
+F_run_task -[dashed,norank]-> F_add_proxy_ip_error
+F_run_task -[dashed,norank]-> F_cleanup_directory
+F_run_task -[dashed,norank]-> F_drain_errors
+F_run_task -[dashed,norank]-> F_get_proxy_key
+F_run_task -[dashed,norank]-> F_get_proxy_url
+F_run_task -[dashed,norank]-> F_max_proxy_attempts
+F_run_task -[dashed,norank]-> F_put_on_cooldown
+F_run_task -[dashed,norank]-> F_read_events
+F_run_task -[dashed,norank]-> F_stop_process_tree
+F_serialize_task -[dashed,norank]-> C_MediaTask
+F_serialize_task -[dashed,norank]-> F_get_stage_message
+F_serialize_task -[dashed,norank]-> F_queue_position
+F_shutdown_tasks -[dashed,norank]-> F_cancel_task
+F_start_tasks -[dashed,norank]-> C_MediaTask
+F_start_tasks -[dashed,norank]-> C_Settings
+F_start_tasks -[dashed,norank]-> F_cleanup_directory
+F_start_tasks -[dashed,norank]-> F_queue_worker
+F_start_tasks -[dashed,norank]-> F_reap_tasks
+F_run_task -[dashed,norank]-> P_media_worker_py
+
+' Worker запускается отдельным процессом; JSON читает read_events().
+' Скрытые линии задают только расположение, а не зависимости кода.
+C_MediaTask -[hidden]right-> F_create_task
+F_create_task -[hidden]right-> F_start_tasks
+F_start_tasks -[hidden]right-> F_serialize_task
+F_serialize_task -[hidden]right-> C_Settings
+F_cancel_task -[hidden]right-> F_reap_tasks
+F_reap_tasks -[hidden]right-> F_queue_worker
+F_queue_worker -[hidden]right-> F_get_task
+F_get_task -[hidden]right-> F_queue_position
+F_cleanup_directory -[hidden]right-> F_shutdown_tasks
+F_shutdown_tasks -[hidden]right-> F_run_task
+F_run_task -[hidden]right-> F_normalize_id
+F_normalize_id -[hidden]right-> F_ensure_queues
+C_WindowsJob -[hidden]right-> F_stop_process_tree
+F_stop_process_tree -[hidden]right-> F_drain_errors
+F_drain_errors -[hidden]right-> F_read_events
+F_read_events -[hidden]right-> F_get_stage_message
+F_add_proxy_info_success -[hidden]right-> F_add_proxy_ip_error
+F_add_proxy_ip_error -[hidden]right-> P_media_worker_py
+P_media_worker_py -[hidden]right-> F_get_proxy_key
+F_get_proxy_key -[hidden]right-> F_get_proxy_url
+F_put_on_cooldown -[hidden]right-> F_max_proxy_attempts
+F_max_proxy_attempts -[hidden]right-> F_detect_platform
+C_MediaTask -[hidden]down-> F_cancel_task
+F_cancel_task -[hidden]down-> F_cleanup_directory
+F_cleanup_directory -[hidden]down-> C_WindowsJob
+C_WindowsJob -[hidden]down-> F_add_proxy_info_success
+F_add_proxy_info_success -[hidden]down-> F_put_on_cooldown
+F_get_task -[dashed,norank]-> C_MediaTask
+F_queue_worker -[dashed,norank]-> C_MediaTask
+F_reap_tasks -[dashed,norank]-> C_MediaTask
+F_shutdown_tasks -[dashed,norank]-> C_MediaTask
+' Создание объектов: F_cancel_task -> C_MediaTask; F_create_task -> C_MediaTask; F_run_task -> C_WindowsJob; F_start_tasks -> C_MediaTask
+@enduml

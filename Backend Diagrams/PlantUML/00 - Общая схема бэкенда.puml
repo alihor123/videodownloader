@@ -1,0 +1,79 @@
+@startuml
+!pragma layout elk
+allowmixing
+top to bottom direction
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 15
+skinparam packageStyle rectangle
+skinparam nodesep 85
+skinparam ranksep 100
+skinparam ArrowColor #34495E
+skinparam ArrowThickness 1.3
+skinparam classAttributeIconSize 0
+skinparam rectangleBackgroundColor #EAF3FC
+skinparam classBackgroundColor #FFF2D6
+hide empty members
+hide circle
+title Бэкенд сервиса: файлы и зависимости
+
+caption 78 функций · 13 классов
+
+rectangle "app.py\nЗапуск приложения\nФункций: 0 | Классов: 0" as M_app_py
+rectangle "config.py\nНастройки сервиса\nФункций: 1 | Классов: 1" as M_config_py
+rectangle "database.py\nПодключение к базе данных\nФункций: 2 | Классов: 1" as M_database_py
+rectangle "rate_limiter.py\nОграничение запросов\nФункций: 1 | Классов: 1" as M_rate_limiter_py
+rectangle "media/router.py\nОбработка HTTP-запросов\nФункций: 6 | Классов: 2" as M_media_router_py
+rectangle "media/schemas.py\nДанные входящих запросов\nФункций: 0 | Классов: 3" as M_media_schemas_py
+rectangle "media/tasks.py\nУправление задачами\nФункций: 15 | Классов: 1" as M_media_tasks_py
+rectangle "media/worker.py\nВыполнение операции в worker\nФункций: 11 | Классов: 1" as M_media_worker_py
+rectangle "media/ytdlp.py\nНастройки и запуск yt-dlp\nФункций: 4 | Классов: 0" as M_media_ytdlp_py
+rectangle "media/formats.py\nВыбор и описание форматов\nФункций: 21 | Классов: 0" as M_media_formats_py
+rectangle "media/platforms.py\nОпределение видеоплатформы\nФункций: 2 | Классов: 0" as M_media_platforms_py
+rectangle "media/messages.py\nСообщения об этапах работы\nФункций: 1 | Классов: 0" as M_media_messages_py
+rectangle "media/models.py\nМодель истории скачиваний\nФункций: 0 | Классов: 1" as M_media_models_py
+rectangle "media/statistics.py\nЗапись истории скачиваний\nФункций: 1 | Классов: 0" as M_media_statistics_py
+rectangle "proxies/pool.py\nВыбор исходящего IP\nФункций: 8 | Классов: 0" as M_proxies_pool_py
+rectangle "proxies/models.py\nМодель статистики прокси\nФункций: 0 | Классов: 1" as M_proxies_models_py
+rectangle "proxies/statistics.py\nЗапись статистики прокси\nФункций: 4 | Классов: 0" as M_proxies_statistics_py
+rectangle "process_tree.py\nОстановка дерева процессов\nФункций: 1 | Классов: 1" as M_process_tree_py
+M_app_py ..> M_config_py
+M_app_py ..> M_database_py : lifespan
+M_app_py ..> M_media_router_py
+M_database_py ..> M_config_py
+M_database_py ..> M_media_models_py
+M_database_py ..> M_media_tasks_py
+M_database_py ..> M_proxies_models_py
+M_media_models_py ..> M_database_py
+M_media_router_py ..> M_config_py
+M_media_router_py ..> M_media_formats_py
+M_media_router_py ..> M_media_platforms_py
+M_media_router_py ..> M_media_schemas_py
+M_media_router_py ..> M_media_statistics_py
+M_media_router_py ..> M_media_tasks_py
+M_media_router_py ..> M_proxies_pool_py
+M_media_router_py ..> M_proxies_statistics_py
+M_media_router_py ..> M_rate_limiter_py
+M_media_statistics_py ..> M_database_py
+M_media_statistics_py ..> M_media_models_py
+M_media_tasks_py ..> M_config_py
+M_media_tasks_py ..> M_media_messages_py
+M_media_tasks_py ..> M_media_platforms_py
+M_media_tasks_py ..> M_process_tree_py
+M_media_tasks_py ..> M_proxies_pool_py
+M_media_tasks_py ..> M_proxies_statistics_py
+M_media_worker_py ..> M_config_py
+M_media_worker_py ..> M_media_formats_py
+M_media_worker_py ..> M_media_platforms_py
+M_media_worker_py ..> M_media_ytdlp_py
+M_media_ytdlp_py ..> M_config_py
+M_media_ytdlp_py ..> M_media_formats_py
+M_proxies_models_py ..> M_database_py
+M_proxies_pool_py ..> M_config_py
+M_proxies_statistics_py ..> M_database_py
+M_proxies_statistics_py ..> M_proxies_pool_py
+M_rate_limiter_py ..> M_config_py
+M_media_tasks_py ..> M_media_worker_py : запуск процесса
+M_proxies_statistics_py ..> M_proxies_models_py : SQL
+@enduml

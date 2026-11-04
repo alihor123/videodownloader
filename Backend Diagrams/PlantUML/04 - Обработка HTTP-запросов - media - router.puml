@@ -1,0 +1,110 @@
+@startuml
+skinparam linetype ortho
+allowmixing
+top to bottom direction
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 15
+skinparam packageStyle rectangle
+skinparam nodesep 85
+skinparam ranksep 100
+skinparam ArrowColor #34495E
+skinparam ArrowThickness 1.3
+skinparam classAttributeIconSize 0
+skinparam rectangleBackgroundColor #EAF3FC
+skinparam classBackgroundColor #FFF2D6
+hide empty members
+hide circle
+title Обработка HTTP-запросов — media/router.py
+
+  rectangle "validate_url()\nПроверка входящей ссылки" as F_validate_url
+  rectangle "get_info()\nЗапрос информации о видео" as F_get_info
+  rectangle "create_download()\nЗапрос создания скачивания" as F_create_download
+  rectangle "status()\nЗапрос состояния задачи" as F_status
+  rectangle "cancel()\nЗапрос отмены задачи" as F_cancel
+  class "ManagedFileResponse\n<size:12>Передача готового файла</size>" as C_ManagedFileResponse {
+    task : MediaTask
+    finished : bool
+  }
+  class "ManagedFastResponse\n<size:12>Передача прямого потока</size>" as C_ManagedFastResponse {
+    task : MediaTask
+    finished : bool
+  }
+  rectangle "download()\nВыдача файла или потока" as F_download
+
+class "DownloadRequest\n(media/schemas.py)" as C_DownloadRequest #F2F4F7
+class "InfoRequest\n(media/schemas.py)" as C_InfoRequest #F2F4F7
+class "MediaTask\n(media/tasks.py)" as C_MediaTask #F2F4F7
+class "RateLimiter\n(rate_limiter.py)" as C_RateLimiter #F2F4F7
+class "Settings\n(config.py)" as C_Settings #F2F4F7
+rectangle "add_download_stat()\nЗапись успешной передачи\n(media/statistics.py)" as F_add_download_stat #F2F4F7
+rectangle "add_proxy_download_success()\nУчёт успешного скачивания\n(proxies/statistics.py)" as F_add_proxy_download_success #F2F4F7
+rectangle "build_content_disposition()\nЗаголовок имени файла\n(media/formats.py)" as F_build_content_disposition #F2F4F7
+rectangle "cancel_task()\nОтмена и ожидание остановки\n(media/tasks.py)" as F_cancel_task #F2F4F7
+rectangle "cleanup_directory()\nУдаление папки задачи\n(media/tasks.py)" as F_cleanup_directory #F2F4F7
+rectangle "create_task()\nСоздание задачи в очереди\n(media/tasks.py)" as F_create_task #F2F4F7
+rectangle "detect_platform()\nОпределение видеоплатформы\n(media/platforms.py)" as F_detect_platform #F2F4F7
+rectangle "get_proxy_url()\nURL выбранного прокси\n(proxies/pool.py)" as F_get_proxy_url #F2F4F7
+rectangle "get_task()\nПоиск задачи по UUID\n(media/tasks.py)" as F_get_task #F2F4F7
+rectangle "serialize_task()\nСостояние задачи для API\n(media/tasks.py)" as F_serialize_task #F2F4F7
+
+C_ManagedFastResponse -[norank]-> C_MediaTask
+C_ManagedFastResponse -[dashed,norank]-> C_Settings
+C_ManagedFastResponse -[dashed,norank]-> F_add_download_stat
+C_ManagedFastResponse -[dashed,norank]-> F_add_proxy_download_success
+C_ManagedFastResponse -[dashed,norank]-> F_build_content_disposition
+C_ManagedFastResponse -[dashed,norank]-> F_cleanup_directory
+C_ManagedFastResponse -[dashed,norank]-> F_get_proxy_url
+C_ManagedFileResponse -[norank]-> C_MediaTask
+C_ManagedFileResponse -[dashed,norank]-> C_Settings
+C_ManagedFileResponse -[dashed,norank]-> F_add_download_stat
+C_ManagedFileResponse -[dashed,norank]-> F_add_proxy_download_success
+C_ManagedFileResponse -[dashed,norank]-> F_build_content_disposition
+C_ManagedFileResponse -[dashed,norank]-> F_cleanup_directory
+F_cancel -[dashed,norank]-> C_RateLimiter
+F_cancel -[dashed,norank]-> F_cancel_task
+F_cancel -[dashed,norank]-> F_serialize_task
+F_create_download -[dashed,norank]-> C_DownloadRequest
+F_create_download -[dashed,norank]-> C_RateLimiter
+F_create_download -[dashed,norank]-> F_create_task
+F_create_download -[dashed,norank]-> F_serialize_task
+F_create_download -[dashed,norank]-> F_validate_url
+F_download -[dashed,norank]-> C_ManagedFastResponse
+F_download -[dashed,norank]-> C_ManagedFileResponse
+F_download -[dashed,norank]-> F_get_task
+F_get_info -[dashed,norank]-> C_InfoRequest
+F_get_info -[dashed,norank]-> C_RateLimiter
+F_get_info -[dashed,norank]-> F_cancel_task
+F_get_info -[dashed,norank]-> F_create_task
+F_get_info -[dashed,norank]-> F_validate_url
+F_status -[dashed,norank]-> F_get_task
+F_status -[dashed,norank]-> F_serialize_task
+F_validate_url -[dashed,norank]-> F_detect_platform
+' Скрытые линии задают только расположение, а не зависимости кода.
+F_get_info -[hidden]right-> F_create_download
+F_create_download -[hidden]right-> F_status
+F_status -[hidden]right-> F_cancel
+F_validate_url -[hidden]right-> F_download
+F_download -[hidden]right-> C_ManagedFileResponse
+C_ManagedFileResponse -[hidden]right-> C_ManagedFastResponse
+C_InfoRequest -[hidden]right-> C_DownloadRequest
+C_DownloadRequest -[hidden]right-> C_MediaTask
+C_MediaTask -[hidden]right-> C_RateLimiter
+C_RateLimiter -[hidden]right-> C_Settings
+F_detect_platform -[hidden]right-> F_create_task
+F_create_task -[hidden]right-> F_get_task
+F_get_task -[hidden]right-> F_serialize_task
+F_serialize_task -[hidden]right-> F_cancel_task
+F_build_content_disposition -[hidden]right-> F_add_download_stat
+F_add_download_stat -[hidden]right-> F_cleanup_directory
+F_cleanup_directory -[hidden]right-> F_get_proxy_url
+F_get_proxy_url -[hidden]right-> F_add_proxy_download_success
+F_get_info -[hidden]down-> F_validate_url
+F_validate_url -[hidden]down-> C_InfoRequest
+C_InfoRequest -[hidden]down-> F_detect_platform
+F_detect_platform -[hidden]down-> F_build_content_disposition
+F_get_info -[dashed,norank]-> C_MediaTask
+F_download -[dashed,norank]-> C_MediaTask
+' Создание объектов: F_download -> C_ManagedFastResponse; F_download -> C_ManagedFileResponse
+@enduml
