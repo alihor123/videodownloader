@@ -1,4 +1,4 @@
-"""Создание задач для возможной отмены"""
+"""Управление задачами получения информации и скачивания медиа."""
 import asyncio
 import json
 import logging
@@ -121,7 +121,6 @@ def cleanup_directory(task):
     except FileNotFoundError:
         pass
     except OSError:
-        # Например, браузер ещё читает файл на Windows. Reaper повторит очистку.
         logger.warning("Cannot clean task directory %s", task.id)
 
 
