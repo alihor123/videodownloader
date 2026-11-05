@@ -437,6 +437,20 @@ async def run_task(task):
             task.error = None
 
 
+def get_directory_size(directory):
+    """Подсчёт размера файлов во временной папке задачи."""
+    # Размер включает промежуточные дорожки, .part и результаты ffmpeg.
+    size = 0
+    if directory.exists():
+        for path in directory.rglob("*"):
+            try:
+                if path.is_file():
+                    size += path.stat().st_size
+            except OSError:
+                pass
+    return size
+
+
 async def reap_tasks():
     """Фоновая отмена задач по таймауту или размеру файлов и очистка завершённых задач."""
     while True:
@@ -453,15 +467,7 @@ async def reap_tasks():
                     continue
                 expired = now - task.touched > settings.media_client_timeout_sec
                 expired |= task.ready_at is not None and now - task.ready_at > settings.media_ready_timeout_sec
-                # Размер включает промежуточные дорожки, .part и результаты ffmpeg.
-                size = 0
-                if task.directory.exists():
-                    for path in task.directory.rglob("*"):
-                        try:
-                            if path.is_file():
-                                size += path.stat().st_size
-                        except OSError:
-                            pass
+                size = get_directory_size(task.directory)
                 if expired or size > settings.media_max_bytes:
                     await cancel_task(task.id)
             except OSError:
