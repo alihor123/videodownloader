@@ -429,7 +429,7 @@ class CancellationTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_cancel_before_create_cannot_resurrect_task(self):
         """Проверяет, что позднее создание не оживляет заранее отменённую задачу."""
-        task_id = str(uuid4())
+        task_id = uuid4().hex
         await manager.cancel_task(task_id)
         task = manager.create_task("https://youtu.be/a", task_id=task_id)
         self.assertEqual(task.status, "cancelled")

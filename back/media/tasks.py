@@ -103,14 +103,6 @@ QUEUES: dict[str, asyncio.Queue] = {}
 WORKERS: list[asyncio.Task] = []
 
 
-def normalize_id(task_id):
-    """Проверка UUID задачи и приведение к строке без дефисов."""
-    try:
-        return UUID(str(task_id)).hex
-    except ValueError:
-        raise HTTPException(422, "Некорректный идентификатор задачи")
-
-
 def cleanup_directory(task):
     """Удаление временной папки задачи вместе с её файлами."""
     directory = task.directory.resolve()
@@ -127,7 +119,7 @@ def cleanup_directory(task):
 
 def get_task(task_id, touch=True):
     """Получение задачи по UUID с возможностью обновить время последнего обращения."""
-    task = TASKS.get(normalize_id(task_id))
+    task = TASKS.get(task_id)
     if not task:
         raise HTTPException(404, "Задача не найдена")
     if touch:
@@ -190,10 +182,10 @@ def ensure_queues():
 
 def create_task(url, height="720", mode="download", task_id=None, *, requested_fast=False,
                 ip="unknown", user_agent=None, kind="video"):
-    """Создание задачи и добавление в очередь после проверки ссылки, UUID и лимитов."""
+    """Создание задачи и добавление в очередь после проверки ссылки и лимитов."""
     ensure_queues()
     platform = detect_platform(url)
-    task_id = normalize_id(task_id or uuid4())
+    task_id = task_id or uuid4().hex
     if task_id in TASKS:
         previous = TASKS[task_id]
         # DELETE может прийти раньше POST. Такая задача уже не должна стартовать.
@@ -226,7 +218,6 @@ def create_task(url, height="720", mode="download", task_id=None, *, requested_f
 
 async def cancel_task(task_id):
     """Отмена задачи с ожиданием остановки выполнения и передачи файла."""
-    task_id = normalize_id(task_id)
     task = TASKS.get(task_id)
     if task is None:
         if len(TASKS) >= settings.max_retained_media_tasks:
