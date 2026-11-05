@@ -331,6 +331,36 @@ async def queue_worker(queue_name):
                 task.error = "Сервис занят. Попробуйте через минуту"
 
 
+async def handle_task_error(task, error):
+    """Обработка ошибки задачи и решение о повторной попытке."""
+    rescheduled = False
+    if task.retry_with_another_proxy:
+        try:
+            operation = "info" if task.mode == "info" else "download"
+            await add_proxy_ip_error(task.proxy_key, task.platform, operation,
+                                     task.proxy_error_kind or "connection_error")
+        except Exception:
+            logger.exception("Cannot save proxy error statistics for task %s", task.id)
+    if task.retry_with_another_proxy and task.proxy_attempts < max_proxy_attempts() and not task.cancel.is_set():
+        put_on_cooldown(task.proxy_key)
+        task.proxy_key = None
+        task.status = task.stage = "queued"
+        task.error = None
+        rescheduled = True
+    elif task.fallback_requested and task.requested_fast and not task.cancel.is_set():
+        task.requested_fast = False
+        task.delivery_mode = task.queue_name = "file"
+        task.status = task.stage = "queued"
+        task.error = None
+        rescheduled = True
+    else:
+        task.retry_with_another_proxy = False
+        logger.warning("Media task %s failed: %s", task.id, error)
+        task.status = task.stage = "failed"
+    task.error = str(error) if isinstance(error, (RuntimeError, TimeoutError)) else "Не удалось подготовить скачивание. Попробуйте ещё раз"
+    return rescheduled
+
+
 async def run_task(task):
     """Запуск процесса worker и ожидание результата, отмены или таймаута."""
     process = job = None
@@ -383,30 +413,7 @@ async def run_task(task):
         # Иначе HTTP-ответ мог бы начать читать файл одновременно с очисткой.
         succeeded = True
     except Exception as error:
-        if task.retry_with_another_proxy:
-            try:
-                operation = "info" if task.mode == "info" else "download"
-                await add_proxy_ip_error(task.proxy_key, task.platform, operation,
-                                         task.proxy_error_kind or "connection_error")
-            except Exception:
-                logger.exception("Cannot save proxy error statistics for task %s", task.id)
-        if task.retry_with_another_proxy and task.proxy_attempts < max_proxy_attempts() and not task.cancel.is_set():
-            put_on_cooldown(task.proxy_key)
-            task.proxy_key = None
-            task.status = task.stage = "queued"
-            task.error = None
-            rescheduled = True
-        elif task.fallback_requested and task.requested_fast and not task.cancel.is_set():
-            task.requested_fast = False
-            task.delivery_mode = task.queue_name = "file"
-            task.status = task.stage = "queued"
-            task.error = None
-            rescheduled = True
-        else:
-            task.retry_with_another_proxy = False
-            logger.warning("Media task %s failed: %s", task.id, error)
-            task.status = task.stage = "failed"
-        task.error = str(error) if isinstance(error, (RuntimeError, TimeoutError)) else "Не удалось подготовить скачивание. Попробуйте ещё раз"
+        rescheduled = await handle_task_error(task, error)
     finally:
         # Сначала останавливаем дерево, затем закрываем читателей и удаляем файлы.
         if process:
