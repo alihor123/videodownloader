@@ -341,13 +341,22 @@ async def handle_task_error(task, error):
                                      task.proxy_error_kind or "connection_error")
         except Exception:
             logger.exception("Cannot save proxy error statistics for task %s", task.id)
-    if task.retry_with_another_proxy and task.proxy_attempts < max_proxy_attempts() and not task.cancel.is_set():
+    can_retry_proxy = (
+        task.retry_with_another_proxy
+        and task.proxy_attempts < max_proxy_attempts()
+        and not task.cancel.is_set()
+    )
+    if can_retry_proxy:
         put_on_cooldown(task.proxy_key)
         task.proxy_key = None
         task.status = task.stage = "queued"
         task.error = None
         rescheduled = True
-    elif task.fallback_requested and task.requested_fast and not task.cancel.is_set():
+    elif (
+        task.fallback_requested
+        and task.requested_fast
+        and not task.cancel.is_set()
+    ):
         task.requested_fast = False
         task.delivery_mode = task.queue_name = "file"
         task.status = task.stage = "queued"
