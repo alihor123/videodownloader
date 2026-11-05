@@ -39,7 +39,7 @@ def validate_url(url):
 async def get_info(body: InfoRequest, request: Request, client_ip: str = Depends(info_limiter)):
     """Один запрос метаданных; при разрыве соединения worker тоже останавливается."""
     validate_url(body.url)
-    task = create_task(body.url, mode="info", task_id=body.task_id.hex if body.task_id else None, ip=client_ip,
+    task = create_task(body.url, mode="info", task_id=body.task_id, ip=client_ip,
                        user_agent=request.headers.get("user-agent"))
     try:
         while task.status not in {"ready", "failed", "cancelled", "completed"}:
@@ -59,7 +59,7 @@ async def create_download(body: DownloadRequest, request: Request):
     client_ip = (fast_limiter if body.format.fast else download_limiter)(request)
     validate_url(body.url)
     # Fast и file задачи расходятся по отдельным очередям после создания.
-    task = create_task(body.url, height=body.format.height, task_id=body.task_id.hex if body.task_id else None,
+    task = create_task(body.url, height=body.format.height, task_id=body.task_id,
                        requested_fast=body.format.fast, ip=client_ip,
                        user_agent=request.headers.get("user-agent"), kind=body.format.kind)
     return serialize_task(task)
@@ -68,13 +68,13 @@ async def create_download(body: DownloadRequest, request: Request):
 @media_router.get("/download-tasks/{task_id}")
 async def status(task_id: UUID):
     """Возвращает текущее состояние задачи и обновляет время обращения клиента."""
-    return serialize_task(get_task(task_id.hex))
+    return serialize_task(get_task(task_id))
 
 
 @media_router.delete("/download-tasks/{task_id}")
 async def cancel(task_id: UUID, client_ip: str = Depends(cancel_limiter)):
     """Отменяет задачу и возвращает состояние после завершения её работы."""
-    return serialize_task(await cancel_task(task_id.hex))
+    return serialize_task(await cancel_task(task_id))
 
 
 class ManagedFileResponse(StreamingResponse):
@@ -202,7 +202,7 @@ class ManagedFastResponse(StreamingResponse):
 @media_router.get("/download-tasks/{task_id}/download")
 async def download(task_id: UUID):
     """Проверяет готовность задачи и выбирает передачу файла или прямого потока."""
-    task = get_task(task_id.hex)
+    task = get_task(task_id)
     if task.status != "ready" or task.mode != "download":
         raise HTTPException(409, "Файл ещё не готов или загрузка уже завершена")
     if task.delivery_mode == "fast":

@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import httpx
 from fastapi import HTTPException
@@ -396,7 +396,7 @@ class CancellationTest(unittest.IsolatedAsyncioTestCase):
             stats.assert_awaited_once()
         self.assertEqual(result.status_code, 200)
         self.assertEqual(result.json()["filename"], "output.mp4")
-        self.assertNotIn(task_id.replace("-", ""), manager.TASKS)
+        self.assertNotIn(UUID(task_id), manager.TASKS)
 
     async def test_info_disconnect_cancels_worker_tree(self):
         """Проверяет остановку дерева процессов при разрыве запроса информации."""
@@ -414,7 +414,7 @@ class CancellationTest(unittest.IsolatedAsyncioTestCase):
         response = asyncio.create_task(get_info(
             InfoRequest(url="https://youtu.be/disconnect", task_id=task_id), request, "test",
         ))
-        normalized_id = task_id.replace("-", "")
+        normalized_id = UUID(task_id)
         await wait_for_condition(lambda: normalized_id in manager.TASKS and
                                  (manager.TASKS[normalized_id].directory / "child.pid").exists(), 15)
         task = manager.TASKS[normalized_id]
@@ -429,7 +429,7 @@ class CancellationTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_cancel_before_create_cannot_resurrect_task(self):
         """Проверяет, что позднее создание не оживляет заранее отменённую задачу."""
-        task_id = uuid4().hex
+        task_id = uuid4()
         await manager.cancel_task(task_id)
         task = manager.create_task("https://youtu.be/a", task_id=task_id)
         self.assertEqual(task.status, "cancelled")

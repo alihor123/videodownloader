@@ -33,7 +33,7 @@ TERMINAL = {"failed", "cancelled", "completed"}
 class MediaTask:
     """Данные и состояние одной операции получения информации или скачивания медиа."""
     # UUID операции, по которому API находит задачу для проверки состояния и отмены.
-    id: str
+    id: UUID
     # Исходная ссылка на видео.
     url: str = ""
     # Операция: info — получить информацию, download — скачать медиа.
@@ -92,11 +92,11 @@ class MediaTask:
     @property
     def directory(self):
         """Путь к временной папке этой задачи."""
-        return TASK_ROOT / self.id
+        return TASK_ROOT / self.id.hex
 
 
 # Задачи по UUID в памяти backend: активные и сохранённые завершённые операции.
-TASKS: dict[str, MediaTask] = {}
+TASKS: dict[UUID, MediaTask] = {}
 # Очереди asyncio.Queue по именам info, fast и file; внутри находятся объекты MediaTask.
 QUEUES: dict[str, asyncio.Queue] = {}
 # Запущенные корутины queue_worker(), которые последовательно берут задачи из очередей.
@@ -117,7 +117,7 @@ def cleanup_directory(task):
         logger.warning("Cannot clean task directory %s", task.id)
 
 
-def get_task(task_id, touch=True):
+def get_task(task_id: UUID, touch=True):
     """Получение задачи по UUID с возможностью обновить время последнего обращения."""
     task = TASKS.get(task_id)
     if not task:
@@ -129,7 +129,7 @@ def get_task(task_id, touch=True):
 
 def serialize_task(task):
     """Подготовка состояния задачи для ответа API."""
-    data = {"task_id": task.id, "status": task.status, "stage": task.stage,
+    data = {"task_id": task.id.hex, "status": task.status, "stage": task.stage,
             "message": task.error or get_stage_message(task.stage), "progress": task.progress,
             "error": task.error, "error_code": 500 if task.status == "failed" else None,
             "platform": task.platform, "download_url": None,
@@ -137,7 +137,7 @@ def serialize_task(task):
     if task.status == "queued":
         data["queue_position"] = queue_position(task)
     if task.status == "ready" and task.mode == "download":
-        data["download_url"] = f"/api/media/download-tasks/{task.id}/download"
+        data["download_url"] = f"/api/media/download-tasks/{task.id.hex}/download"
     if task.status == "ready" and task.mode == "info":
         data["result"] = task.result
     return data
@@ -180,12 +180,12 @@ def ensure_queues():
     })
 
 
-def create_task(url, height="720", mode="download", task_id=None, *, requested_fast=False,
+def create_task(url, height="720", mode="download", task_id: UUID | None = None, *, requested_fast=False,
                 ip="unknown", user_agent=None, kind="video"):
     """Создание задачи и добавление в очередь после проверки ссылки и лимитов."""
     ensure_queues()
     platform = detect_platform(url)
-    task_id = task_id or uuid4().hex
+    task_id = task_id or uuid4()
     if task_id in TASKS:
         previous = TASKS[task_id]
         # DELETE может прийти раньше POST. Такая задача уже не должна стартовать.
@@ -216,7 +216,7 @@ def create_task(url, height="720", mode="download", task_id=None, *, requested_f
     return task
 
 
-async def cancel_task(task_id):
+async def cancel_task(task_id: UUID):
     """Отмена задачи с ожиданием остановки выполнения и передачи файла."""
     task = TASKS.get(task_id)
     if task is None:
@@ -500,10 +500,10 @@ async def start_tasks():
     # Папка выделена только этому менеджеру. Старые файлы прежнего API не трогаем.
     for directory in TASK_ROOT.iterdir():
         try:
-            task_id = UUID(directory.name).hex
+            task_id = UUID(directory.name)
         except ValueError:
             continue
-        if directory.is_dir() and directory.name == task_id:
+        if directory.is_dir() and directory.name == task_id.hex:
             cleanup_directory(MediaTask(task_id))
     return asyncio.create_task(reap_tasks(), name="media-cleanup")
 
