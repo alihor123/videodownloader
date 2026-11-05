@@ -115,7 +115,7 @@ class QueueContractTest(unittest.IsolatedAsyncioTestCase):
 
         async def fake_run(task):
             """Запоминает параметры быстрой задачи и имитирует готовый результат."""
-            seen.append((task.id, task.requested_fast, task.queue_name))
+            seen.append((task.id, task.delivery_mode == "fast", task.queue_name))
             task.status = task.stage = "ready"
             task.result = {"delivery_mode": "fast"}
 
@@ -138,10 +138,9 @@ class QueueContractTest(unittest.IsolatedAsyncioTestCase):
 
         async def fake_run(task):
             """Имитирует отказ быстрого режима и успех повторного обычного скачивания."""
-            seen.append((task.id, task.requested_fast, task.queue_name))
-            if task.requested_fast:
-                task.requested_fast = False
-                task.delivery_mode = task.queue_name = "file"
+            seen.append((task.id, task.delivery_mode == "fast", task.queue_name))
+            if task.delivery_mode == "fast":
+                task.delivery_mode = "file"
                 task.status = task.stage = "queued"
                 task.fallback_requested = True
                 return

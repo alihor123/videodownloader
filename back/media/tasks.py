@@ -38,8 +38,6 @@ class MediaTask:
     url: str = ""
     # Операция: info — получить информацию, download — скачать медиа.
     mode: str = "download"
-    # Запрошена быстрая передача; при переходе к обычному скачиванию сбрасывается.
-    requested_fast: bool = False
     # Текущий способ выдачи: fast — прямой поток через сервер, file — готовый файл.
     delivery_mode: str = "file"
     # Тип скачиваемого медиа: video или audio.
@@ -76,8 +74,6 @@ class MediaTask:
     ip: str = "unknown"
     # Заголовок User-Agent клиента для статистики скачиваний.
     user_agent: str | None = None
-    # Очередь операции: info, fast или file.
-    queue_name: str = "file"
     # Worker запросил переход из быстрого режима к обычному скачиванию.
     fallback_requested: bool = False
     # Ключ исходящего IP в пуле: main или proxy_N; адрес и пароль хранятся отдельно.
@@ -93,6 +89,11 @@ class MediaTask:
     def directory(self):
         """Путь к временной папке этой задачи."""
         return TASK_ROOT / self.id.hex
+
+    @property
+    def queue_name(self):
+        """Очередь по операции и текущему способу выдачи."""
+        return "info" if self.mode == "info" else self.delivery_mode
 
 
 # Задачи по UUID в памяти backend: активные и сохранённые завершённые операции.
@@ -200,16 +201,13 @@ def create_task(url, height="720", mode="download", task_id: UUID | None = None,
         raise HTTPException(429, "Слишком много попыток. Попробуйте через минуту")
     if len(TASKS) >= settings.max_retained_media_tasks:
         raise HTTPException(503, "Сервис занят. Попробуйте через минуту")
-    queue_name = "info" if mode == "info" else ("fast" if requested_fast else "file")
     task = MediaTask(task_id, url=url, height=str(height), mode=mode,
-                     requested_fast=requested_fast,
                      delivery_mode="fast" if requested_fast else "file",
-                     format_kind=kind,
-                     platform=platform["id"], ip=ip, user_agent=user_agent,
-                     queue_name=queue_name)
+                     format_kind=kind, platform=platform["id"],
+                     ip=ip, user_agent=user_agent)
     TASKS[task.id] = task
     try:
-        QUEUES[queue_name].put_nowait(task)
+        QUEUES[task.queue_name].put_nowait(task)
     except asyncio.QueueFull:
         TASKS.pop(task.id, None)
         raise HTTPException(503, "Queue is full")
@@ -345,11 +343,10 @@ async def handle_task_error(task, error):
         rescheduled = True
     elif (
         task.fallback_requested
-        and task.requested_fast
+        and task.delivery_mode == "fast"
         and not task.cancel.is_set()
     ):
-        task.requested_fast = False
-        task.delivery_mode = task.queue_name = "file"
+        task.delivery_mode = "file"
         task.status = task.stage = "queued"
         task.error = None
         rescheduled = True
@@ -387,7 +384,7 @@ async def run_task(task):
         if os.name == "nt":
             job = WindowsJob(process.pid)
         payload = {"url": task.url,
-                   "mode": "fast" if task.requested_fast else task.mode,
+                   "mode": "fast" if task.delivery_mode == "fast" else task.mode,
                    "height": task.height, "kind": task.format_kind,
                    "directory": str(task.directory), "max_bytes": settings.media_max_bytes,
                    "proxy": get_proxy_url(task.proxy_key)}
