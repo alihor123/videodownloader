@@ -52,7 +52,7 @@ class MediaTask:
     # Тип скачиваемого медиа: video или audio.
     format_kind: str = "video"
     # Качество: высота видео в пикселях или битрейт аудио в кбит/с.
-    height: str = DEFAULT_QUALITY
+    quality: str = DEFAULT_QUALITY
     # Идентификатор источника, например youtube или rutube.
     platform: str = ""
     # Состояние задачи, например queued, running, ready, failed или cancelled.
@@ -159,9 +159,9 @@ def queue_position(task):
     if queue is None:
         return None
     queued_position = None
-    for position, item in enumerate(queue._queue, 1):
+    for queue_index, item in enumerate(queue._queue, 1):
         if item is task:
-            queued_position = position
+            queued_position = queue_index
             break
     if queued_position is None:
         return None
@@ -174,8 +174,8 @@ def queue_position(task):
         item.queue_name == task.queue_name and item.status in {"running", "cancelling"}
         for item in TASKS.values()
     )
-    position = occupied + queued_position - worker_count
-    return position if position > 0 else None
+    waiting_position = occupied + queued_position - worker_count
+    return waiting_position if waiting_position > 0 else None
 
 
 def ensure_queues():
@@ -189,7 +189,7 @@ def ensure_queues():
     })
 
 
-def create_task(url, height=DEFAULT_QUALITY, mode="download", task_id: UUID | None = None, *, requested_fast=False,
+def create_task(url, quality=DEFAULT_QUALITY, mode="download", task_id: UUID | None = None, *, requested_fast=False,
                 ip="unknown", user_agent=None, kind="video"):
     """Создание задачи и добавление в очередь после проверки ссылки и лимитов."""
     ensure_queues()
@@ -209,7 +209,7 @@ def create_task(url, height=DEFAULT_QUALITY, mode="download", task_id: UUID | No
         raise HTTPException(429, "Слишком много попыток. Попробуйте через минуту")
     if len(TASKS) >= settings.max_retained_media_tasks:
         raise HTTPException(503, "Сервис занят. Попробуйте через минуту")
-    task = MediaTask(task_id, url=url, height=str(height), mode=mode,
+    task = MediaTask(task_id, url=url, quality=str(quality), mode=mode,
                      delivery_mode="fast" if requested_fast else "file",
                      format_kind=kind, platform=platform["id"],
                      ip=ip, user_agent=user_agent)
@@ -285,7 +285,7 @@ async def read_events(process, task):
     return result
 
 
-async def drain_errors(process, task):
+async def log_worker_stderr(process, task):
     """Запись технического вывода worker из stderr в лог."""
     # Ограниченный вывод в журнал; не накапливаем stderr длинного скачивания в RAM.
     async for line in process.stderr:
@@ -369,7 +369,7 @@ async def handle_task_error(task, error):
 async def run_task(task):
     """Запуск процесса worker и ожидание результата, отмены или таймаута."""
     process = job = None
-    readers = []
+    background_tasks = []
     succeeded = False
     rescheduled = False
     try:
@@ -393,23 +393,23 @@ async def run_task(task):
             job = WindowsJob(process.pid)
         payload = {"url": task.url,
                    "mode": "fast" if task.delivery_mode == "fast" else task.mode,
-                   "height": task.height, "kind": task.format_kind,
+                   "height": task.quality, "kind": task.format_kind,
                    "directory": str(task.directory), "max_bytes": settings.media_max_bytes,
                    "proxy": get_proxy_url(task.proxy_key)}
         process.stdin.write((json.dumps(payload) + "\n").encode())
         await process.stdin.drain()
         process.stdin.close()
-        output = asyncio.create_task(read_events(process, task))
-        errors = asyncio.create_task(drain_errors(process, task))
-        cancelled = asyncio.create_task(task.cancel.wait())
-        readers = [output, errors, cancelled]
+        output_task = asyncio.create_task(read_events(process, task))
+        stderr_task = asyncio.create_task(log_worker_stderr(process, task))
+        cancel_wait_task = asyncio.create_task(task.cancel.wait())
+        background_tasks = [output_task, stderr_task, cancel_wait_task]
         timeout = settings.media_info_timeout_sec if task.mode == "info" else settings.media_task_timeout_sec
-        done, _ = await asyncio.wait([output, cancelled], timeout=timeout, return_when=asyncio.FIRST_COMPLETED)
+        done, _ = await asyncio.wait([output_task, cancel_wait_task], timeout=timeout, return_when=asyncio.FIRST_COMPLETED)
         if task.cancel.is_set():
             return
-        if output not in done:
+        if output_task not in done:
             raise TimeoutError("Подготовка файла заняла слишком много времени. Попробуйте ещё раз")
-        task.result = output.result()
+        task.result = output_task.result()
         if task.mode == "download" and task.delivery_mode != "fast":
             path = task.directory / task.result["filename"]
             if path.resolve().parent != task.directory.resolve() or not path.is_file():
@@ -423,9 +423,9 @@ async def run_task(task):
         # Сначала останавливаем дерево, затем закрываем читателей и удаляем файлы.
         if process:
             await stop_process_tree(process, job)
-        for reader in readers:
-            reader.cancel()
-        await asyncio.gather(*readers, return_exceptions=True)
+        for background_task in background_tasks:
+            background_task.cancel()
+        await asyncio.gather(*background_tasks, return_exceptions=True)
         if task.cancel.is_set():
             task.status = task.stage = "cancelled"
             task.result = None

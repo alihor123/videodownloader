@@ -43,7 +43,7 @@ async def main():
                                   "fast_labels": [item.get("label") for item in (task.result or {}).get("formats", []) if item.get("fast")],
                                   "error": task.error}, ensure_ascii=True), flush=True)
                 if "--download" in sys.argv and task.status == "ready" and platform == "rutube":
-                    download = manager.create_task(url, height=task.result["formats"][0]["height"])
+                    download = manager.create_task(url, quality=task.result["formats"][0]["height"])
                     while download.status not in {"ready", "failed", "cancelled"}:
                         await asyncio.sleep(0.1)
                     if download.status == "ready":
