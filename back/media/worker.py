@@ -17,6 +17,8 @@ from media.ytdlp import (
     extract_info, get_download_ydl_opts, get_info_ydl_opts,
 )
 
+PROGRESS_REPORT_INTERVAL_SECONDS = 0.3
+
 platform_id = None
 
 
@@ -278,7 +280,8 @@ def main():
                 progress = 50 if current_track == "video" else 98
             if progress is not None:
                 progress = max(last_reported_progress, min(98, progress))
-            if status == "finished" or time.monotonic() - last_progress_at > 0.3:
+            if (status == "finished"
+                    or time.monotonic() - last_progress_at > PROGRESS_REPORT_INTERVAL_SECONDS):
                 last_progress_at = time.monotonic()
                 if progress is not None:
                     last_reported_progress = progress
