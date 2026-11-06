@@ -181,6 +181,71 @@ def get_download_progress(data, current_file, current_track):
     return stage, progress, current_file, current_track
 
 
+def extract_with_retry(source_url, opts, download, platform_id, cookie_file):
+    """Извлекает медиа и при необходимости повторяет запрос с настройками платформы."""
+    from yt_dlp.utils import DownloadError
+    try:
+        return extract_info(source_url, opts, download=download)
+    except DownloadError as error:
+        if should_retry_without_youtube_cookies(error, platform_id, cookie_file):
+            opts.pop("cookiefile", None)
+            return extract_info(source_url, opts, download=download)
+        if platform_id != "twitter":
+            raise
+        # Публичные посты иногда недоступны гостевому GraphQL, но доступны через embed API.
+        opts["extractor_args"] = {"twitter": {"api": ["syndication"]}}
+        return extract_info(source_url, opts, download=download)
+
+
+def emit_info_result(info, platform, url):
+    """Отправляет метаданные видео и доступные форматы."""
+    formats = build_format_list(info)
+    if not formats:
+        raise ValueError("Нет доступных форматов для скачивания")
+    # Все загрузки проходят через управляемый worker, включая цельные MP4.
+    view_count = info.get("view_count")
+    duration = info.get("duration")
+    emit("result", data={"title": info.get("title", "Видео"), "thumbnail": info.get("thumbnail"),
+                         "uploader": info.get("uploader") or "Неизвестный автор",
+                         "duration": format_duration(duration) if duration else None,
+                         "views": format_views(view_count) if view_count is not None else None,
+                         "formats": formats, "platform": platform["id"], "platform_name": platform["name"], "url": url})
+
+
+def emit_fast_result(info, height, source_address, proxy_url):
+    """Проверяет прямой поток и отправляет данные для его выдачи."""
+    media_format = select_fast_format(info, height)
+    if media_format is None:
+        emit("fallback", reason="Источник не отдал цельный видеоформат")
+        raise ValueError("Источник не отдал цельный видеоформат")
+    ext = media_format.get("ext") or "mp4"
+    title = get_safe_title(info)
+    headers = get_fast_headers(media_format)
+    if not probe_fast_source(media_format["url"], headers, source_address, proxy_url):
+        emit("fallback", reason="Прямой поток недоступен")
+        raise ValueError("Прямой поток недоступен")
+    emit("result", data={
+        "delivery_mode": "fast",
+        "url": media_format["url"],
+        "headers": headers,
+        "source_address": source_address,
+        "filename": f"{title}.{ext}",
+        "media_type": mimetypes.guess_type(f"video.{ext}")[0] or "application/octet-stream",
+        "title": title,
+        "height": media_format.get("height"),
+        "ext": ext,
+    })
+
+
+def emit_download_result(info, directory):
+    """Находит готовый файл и отправляет его имя."""
+    candidates = list(directory.glob("output.*"))
+    files = [path for path in candidates if path.suffix in {".mp4", ".mp3", ".webm", ".mkv", ".m4a"} and ".f" not in path.stem]
+    if len(files) != 1:
+        raise ValueError("Готовый файл не найден после обработки")
+    emit("result", data={"filename": files[0].name, "title": get_safe_title(info)})
+
+
 def main():
     """Читает параметры задачи и выполняет получение информации или скачивание медиа."""
     # Backend сначала закрепляет процесс в группе/Job, затем разрешает работу
@@ -260,62 +325,17 @@ def main():
             raise DownloadCancelled("Прямые эфиры не поддерживаются")
 
     opts["match_filter"] = reject_live
-    from yt_dlp.utils import DownloadError
-    try:
-        info = extract_info(source_url, opts, download=payload["mode"] == "download")
-    except DownloadError as error:
-        if should_retry_without_youtube_cookies(error, platform["id"], cookie_file):
-            opts.pop("cookiefile", None)
-            info = extract_info(source_url, opts, download=payload["mode"] == "download")
-        else:
-            if platform["id"] != "twitter":
-                raise
-            # Публичные посты иногда недоступны гостевому GraphQL, но доступны через embed API.
-            opts["extractor_args"] = {"twitter": {"api": ["syndication"]}}
-            info = extract_info(source_url, opts, download=payload["mode"] == "download")
+    info = extract_with_retry(
+        source_url, opts, payload["mode"] == "download", platform_id, cookie_file,
+    )
     if not info or info.get("_type") in {"playlist", "multi_video"} or info.get("is_live"):
         raise ValueError("Нужна ссылка на отдельное опубликованное видео")
     if payload["mode"] == "info":
-        formats = build_format_list(info)
-        if not formats:
-            raise ValueError("Нет доступных форматов для скачивания")
-        # Все загрузки проходят через управляемый worker, включая цельные MP4.
-        view_count = info.get("view_count")
-        duration = info.get("duration")
-        emit("result", data={"title": info.get("title", "Видео"), "thumbnail": info.get("thumbnail"),
-                             "uploader": info.get("uploader") or "Неизвестный автор",
-                             "duration": format_duration(duration) if duration else None,
-                             "views": format_views(view_count) if view_count is not None else None,
-                             "formats": formats, "platform": platform["id"], "platform_name": platform["name"], "url": payload["url"]})
+        emit_info_result(info, platform, payload["url"])
     elif payload["mode"] == "fast":
-        media_format = select_fast_format(info, payload["height"])
-        if media_format is None:
-            emit("fallback", reason="Источник не отдал цельный видеоформат")
-            raise ValueError("Источник не отдал цельный видеоформат")
-        ext = media_format.get("ext") or "mp4"
-        title = get_safe_title(info)
-        headers = get_fast_headers(media_format)
-        if not probe_fast_source(media_format["url"], headers, source_address, proxy_url):
-            emit("fallback", reason="Прямой поток недоступен")
-            raise ValueError("Прямой поток недоступен")
-        emit("result", data={
-            "delivery_mode": "fast",
-            "url": media_format["url"],
-            "headers": headers,
-            "source_address": source_address,
-            "filename": f"{title}.{ext}",
-            "media_type": mimetypes.guess_type(f"video.{ext}")[0] or "application/octet-stream",
-            "title": title,
-            "height": media_format.get("height"),
-            "ext": ext,
-        })
+        emit_fast_result(info, payload["height"], source_address, proxy_url)
     else:
-        directory = Path(payload["directory"])
-        candidates = list(directory.glob("output.*"))
-        files = [path for path in candidates if path.suffix in {".mp4", ".mp3", ".webm", ".mkv", ".m4a"} and ".f" not in path.stem]
-        if len(files) != 1:
-            raise ValueError("Готовый файл не найден после обработки")
-        emit("result", data={"filename": files[0].name, "title": get_safe_title(info)})
+        emit_download_result(info, Path(payload["directory"]))
 
 
 if __name__ == "__main__":
