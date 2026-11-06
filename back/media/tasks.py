@@ -482,11 +482,7 @@ async def start_tasks():
     """Создание очередей, запуск их обработчиков и фоновой очистки."""
     TASK_ROOT.mkdir(parents=True, exist_ok=True)
     QUEUES.clear()
-    QUEUES.update({
-        "info": asyncio.Queue(maxsize=settings.info_queue_size),
-        "fast": asyncio.Queue(maxsize=settings.fast_queue_size),
-        "file": asyncio.Queue(maxsize=settings.file_queue_size),
-    })
+    ensure_queues()
     WORKERS.clear()
     for name, count in (("info", settings.info_worker_count),
                         ("fast", settings.fast_worker_count),
