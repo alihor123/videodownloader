@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import shutil
+import subprocess
 import sys
 import time
 from dataclasses import dataclass, field
@@ -23,6 +24,14 @@ from proxies.pool import (
 
 
 logger = logging.getLogger(__name__)
+# Значение качества по умолчанию.
+DEFAULT_QUALITY = "720"
+# Максимальная длина строки worker в журнале.
+MAX_LOG_LINE_LENGTH = 2000
+# Предел буфера чтения потоков worker в байтах.
+WORKER_STREAM_LIMIT = 1024 * 1024
+# Интервал между проверками задач в секундах.
+CLEANUP_INTERVAL_SECONDS = 2
 # Общий каталог временных папок задач: back/tmp/media_tasks/<UUID задачи>.
 TASK_ROOT = BASE_DIR / "tmp" / "media_tasks"
 # Состояния завершённых задач, которые больше не занимают лимит активных операций.
@@ -43,7 +52,7 @@ class MediaTask:
     # Тип скачиваемого медиа: video или audio.
     format_kind: str = "video"
     # Качество: высота видео в пикселях или битрейт аудио в кбит/с.
-    height: str = "720"
+    height: str = DEFAULT_QUALITY
     # Идентификатор источника, например youtube или rutube.
     platform: str = ""
     # Состояние задачи, например queued, running, ready, failed или cancelled.
@@ -180,7 +189,7 @@ def ensure_queues():
     })
 
 
-def create_task(url, height="720", mode="download", task_id: UUID | None = None, *, requested_fast=False,
+def create_task(url, height=DEFAULT_QUALITY, mode="download", task_id: UUID | None = None, *, requested_fast=False,
                 ip="unknown", user_agent=None, kind="video"):
     """Создание задачи и добавление в очередь после проверки ссылки и лимитов."""
     ensure_queues()
@@ -280,7 +289,7 @@ async def drain_errors(process, task):
     """Запись технического вывода worker из stderr в лог."""
     # Ограниченный вывод в журнал; не накапливаем stderr длинного скачивания в RAM.
     async for line in process.stderr:
-        logger.warning("Media worker %s: %s", task.id, line.decode("utf-8", errors="replace").rstrip()[:2000])
+        logger.warning("Media worker %s: %s", task.id, line.decode("utf-8", errors="replace").rstrip()[:MAX_LOG_LINE_LENGTH])
 
 
 async def queue_worker(queue_name):
@@ -375,9 +384,9 @@ async def run_task(task):
         process = await asyncio.create_subprocess_exec(
             sys.executable, "-u", "-m", "media.worker", cwd=BASE_DIR,
             stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE, limit=1024 * 1024,
+            stderr=asyncio.subprocess.PIPE, limit=WORKER_STREAM_LIMIT,
             start_new_session=os.name != "nt",
-            creationflags=0x08000000 if os.name == "nt" else 0,
+            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
             env={**os.environ, "PYTHONIOENCODING": "utf-8"},
         )
         if os.name == "nt":
@@ -457,7 +466,7 @@ def get_directory_size(directory):
 async def reap_tasks():
     """Фоновая отмена задач по таймауту или размеру файлов и очистка завершённых задач."""
     while True:
-        await asyncio.sleep(2)
+        await asyncio.sleep(CLEANUP_INTERVAL_SECONDS)
         now = time.monotonic()
         for task in list(TASKS.values()):
             try:
