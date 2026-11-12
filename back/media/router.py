@@ -77,7 +77,55 @@ async def cancel(task_id: UUID, client_ip: str = Depends(cancel_limiter)):
     return serialize_task(await cancel_task(task_id))
 
 
-class ManagedFileResponse(StreamingResponse):
+class ManagedResponse(StreamingResponse):
+    """Общий порядок передачи медиа с отменой, очисткой и статистикой."""
+
+    async def __call__(self, scope, receive, send):
+        """Управляет передачей, отменой, очисткой и записью статистики успеха."""
+        task = self.task
+        task.streaming = True
+        sending = asyncio.create_task(super().__call__(scope, receive, send))
+        cancelled = asyncio.create_task(task.cancel.wait())
+        delivered = False
+        try:
+            done, _ = await asyncio.wait(
+                [sending, cancelled], timeout=settings.media_task_timeout_sec,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if self.is_sending_finished(sending, done):
+                await sending
+                delivered = self.finished
+        finally:
+            sending.cancel()
+            cancelled.cancel()
+            await asyncio.gather(sending, cancelled, return_exceptions=True)
+            await self.close_body()
+            task.streaming = False
+            task.status = task.stage = "completed" if delivered and not task.cancel.is_set() else "cancelled"
+            cleanup_directory(task)
+            task.transfer_done.set()
+        if task.status == "completed":
+            try:
+                await add_download_stat(ip=task.ip, user_agent=task.user_agent, video_url=task.url,
+                                        format_value=task.quality, file_ext=self.get_file_ext())
+                await add_proxy_download_success(task.proxy_key, task.platform)
+            except Exception:
+                logging.getLogger(__name__).exception("Cannot save download statistics")
+
+    def is_sending_finished(self, sending, done):
+        """Проверяет завершение задачи отправки после ожидания."""
+        return sending.done()
+
+    async def close_body(self):
+        """Закрывает итератор локального файла."""
+        await self.body_iterator.aclose()
+
+    def get_file_ext(self):
+        """Получает расширение готового файла для статистики."""
+        return self.task.result["filename"].rsplit(".", 1)[-1]
+
+
+class ManagedFileResponse(ManagedResponse):
     """Отмена из API прерывает и уже начавшуюся HTTP-передачу файла."""
 
     def __init__(self, task, path):
@@ -100,38 +148,8 @@ class ManagedFileResponse(StreamingResponse):
                 yield chunk
                 await asyncio.sleep(0)
 
-    async def __call__(self, scope, receive, send):
-        """Управляет передачей файла, отменой, очисткой и записью статистики успеха."""
-        task = self.task
-        task.streaming = True
-        sending = asyncio.create_task(super().__call__(scope, receive, send))
-        cancelled = asyncio.create_task(task.cancel.wait())
-        delivered = False
-        try:
-            await asyncio.wait([sending, cancelled], timeout=settings.media_task_timeout_sec,
-                               return_when=asyncio.FIRST_COMPLETED)
-            if sending.done():
-                await sending
-                delivered = self.finished
-        finally:
-            sending.cancel()
-            cancelled.cancel()
-            await asyncio.gather(sending, cancelled, return_exceptions=True)
-            await self.body_iterator.aclose()
-            task.streaming = False
-            task.status = task.stage = "completed" if delivered and not task.cancel.is_set() else "cancelled"
-            cleanup_directory(task)
-            task.transfer_done.set()
-        if task.status == "completed":
-            try:
-                await add_download_stat(ip=task.ip, user_agent=task.user_agent, video_url=task.url,
-                                        format_value=task.quality, file_ext=task.result["filename"].rsplit(".", 1)[-1])
-                await add_proxy_download_success(task.proxy_key, task.platform)
-            except Exception:
-                logging.getLogger(__name__).exception("Cannot save download statistics")
 
-
-class ManagedFastResponse(StreamingResponse):
+class ManagedFastResponse(ManagedResponse):
     """Проксирует fast-поток и закрывает upstream при отмене клиента или задачи."""
 
     def __init__(self, task):
@@ -167,36 +185,18 @@ class ManagedFastResponse(StreamingResponse):
                     yield chunk
                 self.finished = True
 
-    async def __call__(self, scope, receive, send):
-        """Управляет прямой передачей, отменой, очисткой и записью статистики успеха."""
-        task = self.task
-        task.streaming = True
-        sending = asyncio.create_task(super().__call__(scope, receive, send))
-        cancelled = asyncio.create_task(task.cancel.wait())
-        delivered = False
-        try:
-            done, _ = await asyncio.wait([sending, cancelled], timeout=settings.media_task_timeout_sec,
-                                         return_when=asyncio.FIRST_COMPLETED)
-            if sending in done:
-                await sending
-                delivered = self.finished
-        finally:
-            sending.cancel()
-            cancelled.cancel()
-            await asyncio.gather(sending, cancelled, return_exceptions=True)
-            if hasattr(self.body_iterator, "aclose"):
-                await self.body_iterator.aclose()
-            task.streaming = False
-            task.status = task.stage = "completed" if delivered and not task.cancel.is_set() else "cancelled"
-            cleanup_directory(task)
-            task.transfer_done.set()
-        if task.status == "completed":
-            try:
-                await add_download_stat(ip=task.ip, user_agent=task.user_agent, video_url=task.url,
-                                        format_value=task.quality, file_ext=task.result.get("ext", "mp4"))
-                await add_proxy_download_success(task.proxy_key, task.platform)
-            except Exception:
-                logging.getLogger(__name__).exception("Cannot save download statistics")
+    def is_sending_finished(self, sending, done):
+        """Проверяет завершение отправки в результате ожидания."""
+        return sending in done
+
+    async def close_body(self):
+        """Закрывает итератор потока, если он поддерживает закрытие."""
+        if hasattr(self.body_iterator, "aclose"):
+            await self.body_iterator.aclose()
+
+    def get_file_ext(self):
+        """Получает расширение прямого потока для статистики."""
+        return self.task.result.get("ext", "mp4")
 
 
 @media_router.get("/download-tasks/{task_id}/download")
