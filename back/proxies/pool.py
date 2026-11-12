@@ -9,7 +9,6 @@ from config import settings
 # main означает прямое подключение с IP сервера: у него нет URL прокси.
 proxy_urls: dict[str, str | None] = {}
 available: list[str] = []
-used: list[str] = []
 cooldown_until: dict[str, float] = {}
 
 
@@ -28,7 +27,6 @@ def configure(raw_proxies: str | None = None) -> None:
             proxy_urls[f"proxy_{len(proxy_urls)}"] = proxy_url
 
     available.clear()
-    used.clear()
     cooldown_until.clear()
     start_new_round()
 
@@ -46,7 +44,6 @@ def start_new_round() -> None:
     restore_cooled_down()
     available[:] = [key for key in proxy_urls if key not in cooldown_until]
     shuffle(available)
-    used.clear()
 
 
 def get_proxy_key() -> str:
@@ -60,7 +57,6 @@ def get_proxy_key() -> str:
         return "main"
 
     key = available.pop()
-    used.append(key)
     return key
 
 
@@ -83,7 +79,6 @@ def put_on_cooldown(key: str) -> None:
     """Временно исключает IP после сетевой ошибки или антибот-блокировки."""
     cooldown_until[key] = monotonic() + settings.media_proxy_cooldown_sec
     available[:] = [available_key for available_key in available if available_key != key]
-    used[:] = [used_key for used_key in used if used_key != key]
 
 
 def max_proxy_attempts() -> int:
