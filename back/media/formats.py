@@ -144,7 +144,7 @@ def get_audio_download_bitrate(height):
     return str(height) if is_audio_download(height) else None
 
 
-def get_output_ext(height, kind="video"):
+def get_output_ext(kind="video"):
     """Выбирает расширение результата: MP3 для аудио и MP4 для видео."""
     return "mp3" if kind == "audio" else "mp4"
 
