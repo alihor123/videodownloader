@@ -20,11 +20,20 @@ from rate_limiter import RateLimiter
 from media.formats import build_content_disposition
 
 
+# Размер порции при передаче медиа клиенту, в байтах.
+STREAM_CHUNK_SIZE = 256 * 1024
+# Интервал проверки готовности метаданных, в секундах.
+INFO_POLL_INTERVAL_SECONDS = 0.1
+# Число запросов отмены с одного IP за окно, заданное в секундах.
+CANCEL_RATE_LIMIT_REQUESTS = 120
+CANCEL_RATE_LIMIT_PERIOD_SECONDS = 60
+
+
 media_router = APIRouter()
 info_limiter = RateLimiter(settings.info_rate_limit_requests, settings.info_rate_limit_period_sec)
 download_limiter = RateLimiter(settings.file_download_rate_limit_requests, settings.file_download_rate_limit_period_sec)
 fast_limiter = RateLimiter(settings.fast_download_rate_limit_requests, settings.fast_download_rate_limit_period_sec)
-cancel_limiter = RateLimiter(120, 60)
+cancel_limiter = RateLimiter(CANCEL_RATE_LIMIT_REQUESTS, CANCEL_RATE_LIMIT_PERIOD_SECONDS)
 
 
 def validate_url(url):
@@ -45,7 +54,7 @@ async def get_info(body: InfoRequest, request: Request, client_ip: str = Depends
         while task.status not in {"ready", "failed", "cancelled", "completed"}:
             if await request.is_disconnected():
                 raise HTTPException(499, "Запрос отменён")
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(INFO_POLL_INTERVAL_SECONDS)
         if task.status != "ready":
             raise HTTPException(400, task.error or "Запрос отменён")
         return task.result
@@ -141,7 +150,7 @@ class ManagedFileResponse(ManagedResponse):
         # Небольшие чтения, без накопления видео в памяти приложения.
         with path.open("rb") as file:
             while not self.task.cancel.is_set():
-                chunk = file.read(256 * 1024)
+                chunk = file.read(STREAM_CHUNK_SIZE)
                 if not chunk:
                     self.finished = True
                     return
@@ -179,7 +188,7 @@ class ManagedFastResponse(ManagedResponse):
         async with httpx.AsyncClient(follow_redirects=True, timeout=timeout, transport=transport) as client:
             async with client.stream("GET", url, headers=headers) as response:
                 response.raise_for_status()
-                async for chunk in response.aiter_bytes(256 * 1024):
+                async for chunk in response.aiter_bytes(STREAM_CHUNK_SIZE):
                     if self.task.cancel.is_set():
                         return
                     yield chunk
