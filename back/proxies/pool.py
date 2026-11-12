@@ -34,7 +34,7 @@ def configure(raw_proxies: str | None = None) -> None:
 
 
 def restore_cooled_down() -> None:
-    """Возвращает IP, у которых закончилось время отдыха."""
+    """Удаляет истёкшие блокировки IP."""
     now = monotonic()
     for key, cooldown_end in list(cooldown_until.items()):
         if cooldown_end <= now:
