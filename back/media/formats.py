@@ -4,7 +4,6 @@ import urllib.parse
 
 
 STANDARD_HEIGHTS = (144, 240, 360, 480, 720, 1080, 1440, 2160)
-MAX_AUDIO_BITRATE = 512
 QUALITY_MARKER_RE = re.compile(r"(?:^|_)(\d{3,4})p(?:_|$)")
 
 
@@ -128,20 +127,6 @@ def format_audio_quality(bitrate):
 def get_safe_title(info):
     """Удаляет из названия символы, которые не используются в имени скачиваемого файла."""
     return re.sub(r"[^\w ._\-()]", "", info.get("title", "video")) or "video"
-
-
-def is_audio_download(height):
-    """Распознаёт значение битрейта аудио среди числовых параметров качества."""
-    try:
-        value = int(height)
-    except (TypeError, ValueError):
-        return False
-    return value not in STANDARD_HEIGHTS and value <= MAX_AUDIO_BITRATE
-
-
-def get_audio_download_bitrate(height):
-    """Возвращает битрейт строкой, если значение соответствует аудиоформату."""
-    return str(height) if is_audio_download(height) else None
 
 
 def get_output_ext(kind="video"):
