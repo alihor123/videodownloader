@@ -248,6 +248,52 @@ def emit_download_result(info, directory):
     emit("result", data={"filename": files[0].name, "title": get_safe_title(info)})
 
 
+def get_worker_options(payload, platform_id, progress_hook, source_address, proxy_url):
+    """Собирает настройки yt-dlp и подготавливает cookie-файл задачи."""
+    if payload["mode"] in {"info", "fast"}:
+        opts = get_info_ydl_opts()
+    else:
+        kind = payload.get("kind", "video")
+        if kind not in {"video", "audio"}:
+            raise ValueError("Некорректный тип медиаформата")
+        ext = get_output_ext(kind)
+        opts = get_download_ydl_opts(payload["height"], ext,
+                                     str(Path(payload["directory"]) / "output.%(ext)s"), progress_hook, kind)
+        if ext == "mp4":
+            # При fallback на WebM UI всё равно обещает MP4: меняем контейнер.
+            opts.setdefault("postprocessors", []).append({"key": "FFmpegVideoRemuxer", "preferedformat": "mp4"})
+    opts.update({"logger": Logger(), "quiet": True, "noprogress": True,
+                 "noplaylist": True, "cachedir": False, "playlistend": 1,
+                 "max_filesize": payload["max_bytes"], "source_address": source_address})
+    if proxy_url:
+        opts["proxy"] = proxy_url
+    # YouTube-специфичные настройки не переносим автоматически на другие сайты.
+    if platform_id != "youtube":
+        for key in ("cookiefile", "extractor_args", "js_runtimes"):
+            opts.pop(key, None)
+    cookie_file = get_platform_cookie_file(platform_id)
+    if cookie_file and not (platform_id == "youtube" and payload["mode"] == "fast"):
+        # CookieJar сохраняет файл при закрытии: используем копию задачи для любой платформы.
+        import shutil
+        cookie_copy = Path(payload["directory"]) / "cookies.txt"
+        shutil.copyfile(cookie_file, cookie_copy)
+        opts["cookiefile"] = str(cookie_copy)
+
+    # Отключаем generic extractor и загрузку произвольных URL.
+    opts["allowed_extractors"] = ["youtube", "rutube", "rutube:embed", "rutube:movie", "vk",
+                                  "twitter", "twitter:shortener", "twitter:card", "twitter:amplify",
+                                  "tiktok", "vm\\.tiktok", "instagram"]
+
+    def reject_live(info, *, incomplete=False):
+        """Отклоняет прямые эфиры и ещё не начавшиеся трансляции."""
+        if info.get("is_live") or info.get("live_status") in {"is_live", "is_upcoming"}:
+            from yt_dlp.utils import DownloadCancelled
+            raise DownloadCancelled("Прямые эфиры не поддерживаются")
+
+    opts["match_filter"] = reject_live
+    return opts, cookie_file
+
+
 def main():
     """Читает параметры задачи и выполняет получение информации или скачивание медиа."""
     # Backend сначала закрепляет процесс в группе/Job, затем разрешает работу
@@ -287,47 +333,9 @@ def main():
                     last_reported_progress = progress
                 emit("progress", stage=stage, progress=progress)
 
-    if payload["mode"] in {"info", "fast"}:
-        opts = get_info_ydl_opts()
-    else:
-        kind = payload.get("kind", "video")
-        if kind not in {"video", "audio"}:
-            raise ValueError("Некорректный тип медиаформата")
-        ext = get_output_ext(kind)
-        opts = get_download_ydl_opts(payload["height"], ext,
-                                     str(Path(payload["directory"]) / "output.%(ext)s"), progress_hook, kind)
-        if ext == "mp4":
-            # При fallback на WebM UI всё равно обещает MP4: меняем контейнер.
-            opts.setdefault("postprocessors", []).append({"key": "FFmpegVideoRemuxer", "preferedformat": "mp4"})
-    opts.update({"logger": Logger(), "quiet": True, "noprogress": True,
-                 "noplaylist": True, "cachedir": False, "playlistend": 1,
-                 "max_filesize": payload["max_bytes"], "source_address": source_address})
-    if proxy_url:
-        opts["proxy"] = proxy_url
-    # YouTube-специфичные настройки не переносим автоматически на другие сайты.
-    if platform["id"] != "youtube":
-        for key in ("cookiefile", "extractor_args", "js_runtimes"):
-            opts.pop(key, None)
-    cookie_file = get_platform_cookie_file(platform["id"])
-    if cookie_file and not (platform["id"] == "youtube" and payload["mode"] == "fast"):
-        # CookieJar сохраняет файл при закрытии: используем копию задачи для любой платформы.
-        import shutil
-        cookie_copy = Path(payload["directory"]) / "cookies.txt"
-        shutil.copyfile(cookie_file, cookie_copy)
-        opts["cookiefile"] = str(cookie_copy)
-
-    # Отключаем generic extractor и загрузку произвольных URL.
-    opts["allowed_extractors"] = ["youtube", "rutube", "rutube:embed", "rutube:movie", "vk",
-                                  "twitter", "twitter:shortener", "twitter:card", "twitter:amplify",
-                                  "tiktok", "vm\\.tiktok", "instagram"]
-
-    def reject_live(info, *, incomplete=False):
-        """Отклоняет прямые эфиры и ещё не начавшиеся трансляции."""
-        if info.get("is_live") or info.get("live_status") in {"is_live", "is_upcoming"}:
-            from yt_dlp.utils import DownloadCancelled
-            raise DownloadCancelled("Прямые эфиры не поддерживаются")
-
-    opts["match_filter"] = reject_live
+    opts, cookie_file = get_worker_options(
+        payload, platform_id, progress_hook, source_address, proxy_url,
+    )
     info = extract_with_retry(
         source_url, opts, payload["mode"] == "download", platform_id, cookie_file,
     )
