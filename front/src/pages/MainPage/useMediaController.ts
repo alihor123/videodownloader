@@ -111,6 +111,51 @@ export function useMediaController() {
     }
   }
 
+  /** Ожидает подготовку файла и запускает его передачу браузеру. */
+  async function waitForDownload(task: MediaTask, operation: Operation): Promise<void> {
+    let pollNetworkErrorCount = 0
+    let downloadStarted = false
+    const finishPreparation = () => {
+      if (operationRef.current !== operation) return
+      // Передача началась: дальше браузер управляет скачиванием сам.
+      operationRef.current = null
+      setIsDownloading(false)
+    }
+    while (!FINISHED_STATUSES.has(task.status)) {
+      if (operation.controller.signal.aborted || operationRef.current !== operation) return
+      if (task.status === 'ready' && !downloadStarted && task.download_url) {
+        // Файл уже готов, но polling продолжается: сервер должен увидеть завершение передачи.
+        triggerDownload(task.download_url)
+        downloadStarted = true
+      }
+      await waitForPoll(operation.controller.signal)
+      try {
+        task = await getDownloadTask(task.task_id, operation.controller.signal)
+      } catch (error: unknown) {
+        // Короткие обрывы сети не должны сбрасывать уже идущую задачу.
+        if (error instanceof ApiError && error.status === undefined && ++pollNetworkErrorCount <= MAX_POLL_NETWORK_ERRORS) {
+          continue
+        }
+        if (error instanceof ApiError && error.status === 404) {
+          throw new ApiError(LOST_TASK_MESSAGE, 404)
+        }
+        throw error
+      }
+      pollNetworkErrorCount = 0
+      if (operation.controller.signal.aborted || operationRef.current !== operation) return
+      setDownloadTask(task)
+      if (task.status === 'sending') {
+        finishPreparation()
+        return
+      }
+    }
+
+    if (task.status === 'failed') {
+      const code = task.error_code ?? 500
+      throw new ApiError(task.error || Api.getErrorMessage(code, TASK_ERROR_MESSAGES), code)
+    }
+  }
+
   async function downloadCurrentVideo(): Promise<void> {
     const url = videoData?.url
     if (!url || !selectedFormat || !await cancelDownloadFlow()) return
@@ -122,51 +167,11 @@ export function useMediaController() {
     setIsDownloading(true)
 
     try {
-      let task = await createDownloadTask(url, selectedFormat, operation.id, operation.controller.signal)
+      const task = await createDownloadTask(url, selectedFormat, operation.id, operation.controller.signal)
       if (operation.controller.signal.aborted || operationRef.current !== operation) return
       setDownloadTask(task)
 
-      let pollNetworkErrorCount = 0
-      let downloadStarted = false
-      const finishPreparation = () => {
-        if (operationRef.current !== operation) return
-        // Передача началась: дальше браузер управляет скачиванием сам.
-        operationRef.current = null
-        setIsDownloading(false)
-      }
-      while (!FINISHED_STATUSES.has(task.status)) {
-        if (operation.controller.signal.aborted || operationRef.current !== operation) return
-        if (task.status === 'ready' && !downloadStarted && task.download_url) {
-          // Файл уже готов, но polling продолжается: сервер должен увидеть завершение передачи.
-          triggerDownload(task.download_url)
-          downloadStarted = true
-        }
-        await waitForPoll(operation.controller.signal)
-        try {
-          task = await getDownloadTask(task.task_id, operation.controller.signal)
-        } catch (error: unknown) {
-          // Короткие обрывы сети не должны сбрасывать уже идущую задачу.
-          if (error instanceof ApiError && error.status === undefined && ++pollNetworkErrorCount <= MAX_POLL_NETWORK_ERRORS) {
-            continue
-          }
-          if (error instanceof ApiError && error.status === 404) {
-            throw new ApiError(LOST_TASK_MESSAGE, 404)
-          }
-          throw error
-        }
-        pollNetworkErrorCount = 0
-        if (operation.controller.signal.aborted || operationRef.current !== operation) return
-        setDownloadTask(task)
-        if (task.status === 'sending') {
-          finishPreparation()
-          return
-        }
-      }
-
-      if (task.status === 'failed') {
-        const code = task.error_code ?? 500
-        throw new ApiError(task.error || Api.getErrorMessage(code, TASK_ERROR_MESSAGES), code)
-      }
+      await waitForDownload(task, operation)
     } catch (error: unknown) {
       if (operation.controller.signal.aborted || operationRef.current !== operation) return
       if (error instanceof ApiAbortError || (error instanceof DOMException && error.name === 'AbortError')) return

@@ -3,13 +3,10 @@ import styles from './MainPage.module.css'
 import Header from './Header/Header'
 import { useMediaController } from './useMediaController'
 import closeIcon from '../../assets/icons/close.svg?raw'
-import personIcon from '../../assets/icons/person.svg?raw'
-import scheduleIcon from '../../assets/icons/schedule.svg?raw'
 import searchIcon from '../../assets/icons/search.svg?raw'
 import stopIcon from '../../assets/icons/stop.svg?raw'
-import visibilityIcon from '../../assets/icons/visibility.svg?raw'
-import ServiceGuide, { PlatformIcon } from './ServiceGuide'
-import VideoThumbnail from './VideoThumbnail'
+import ServiceGuide from './ServiceGuide'
+import VideoResult from './VideoResult'
 
 function SvgIcon({ svg, className }: { svg: string; className?: string }) {
   return (
@@ -114,64 +111,12 @@ export default function MainPage() {
 
           {!isLoading && videoData && (
             <>
-              <div className={styles.videoInfo}>
-                {videoData.thumbnail && (
-                  <VideoThumbnail
-                    key={videoData.thumbnail}
-                    src={videoData.thumbnail}
-                  />
-                )}
-                <div className={styles.videoDetails}>
-                  <div className={styles.videoTitle}>{videoData.title}</div>
-                  <div className={styles.videoMeta}>
-                    <div className={styles.metaItem}>
-                      <SvgIcon className={styles.metaIcon} svg={personIcon} />
-                      <span>{videoData.uploader}</span>
-                    </div>
-                    {videoData.duration && (
-                      <div className={styles.metaItem}>
-                        <SvgIcon className={styles.metaIcon} svg={scheduleIcon} />
-                        <span>{videoData.duration}</span>
-                      </div>
-                    )}
-                    {videoData.views && (
-                      <div className={styles.metaItem}>
-                        <SvgIcon className={styles.metaIcon} svg={visibilityIcon} />
-                        <span>{videoData.views}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {videoData.formats.length > 0 && (
-                <div className={styles.qualitySection}>
-                  <div className={styles.qualityHeading}>
-                    <div className={styles.qualityHeader}>Качество</div>
-                    <div className={styles.qualityPlatform}>
-                      <PlatformIcon platform={videoData.platform} />
-                      <span>{videoData.platform_name}</span>
-                    </div>
-                  </div>
-                  <div className={styles.qualityList}>
-                    {videoData.formats.map((format) => (
-                      <button
-                        className={`${styles.qualityItem} ${selectedFormat?.height === format.height ? styles.selected : ''}`}
-                        key={`${format.height}-${format.ext}-${format.fast}`}
-                        disabled={isDownloadBusy}
-                        onClick={() => setSelectedFormat(format)}
-                      >
-                        <div className={styles.itemDescription}>
-                          <div className={styles.res}>{format.label}</div>
-                          {format.size && <div className={styles.qualitySize}>{format.size}</div>}
-                          <div className={styles.format}>{format.ext}</div>
-                        </div>
-                        {format.fast && <div className={styles.fastBadge}>fast</div>}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
+              <VideoResult
+                video={videoData}
+                selectedFormat={selectedFormat}
+                isDownloadBusy={isDownloadBusy}
+                onSelectFormat={setSelectedFormat}
+              />
 
               <div className={styles.footer}>
                 <div className={styles.footerContent}>
