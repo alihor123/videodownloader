@@ -293,7 +293,7 @@ def main():
         kind = payload.get("kind", "video")
         if kind not in {"video", "audio"}:
             raise ValueError("Некорректный тип медиаформата")
-        ext = get_output_ext(payload["height"], kind)
+        ext = get_output_ext(kind)
         opts = get_download_ydl_opts(payload["height"], ext,
                                      str(Path(payload["directory"]) / "output.%(ext)s"), progress_hook, kind)
         if ext == "mp4":
