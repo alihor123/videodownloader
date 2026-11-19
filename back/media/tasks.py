@@ -105,10 +105,30 @@ class MediaTask:
         return "info" if self.mode == "info" else self.delivery_mode
 
 
+class MediaTaskQueue(asyncio.Queue[MediaTask]):
+    """Очередь с поиском позиции и отменой ожидающей задачи."""
+
+    def position(self, task: MediaTask) -> int | None:
+        """Возвращает позицию задачи с единицы, пока она находится в очереди."""
+        for index, item in enumerate(self._queue, 1):
+            if item is task:
+                return index
+        return None
+
+    def discard(self, task: MediaTask) -> None:
+        """Удаляет ожидающую задачу и закрывает её запись в счётчике очереди."""
+        try:
+            self._queue.remove(task)
+        except ValueError:
+            return
+        self.task_done()
+        self._wakeup_next(self._putters)
+
+
 # Задачи по UUID в памяти backend: активные и сохранённые завершённые операции.
 TASKS: dict[UUID, MediaTask] = {}
-# Очереди asyncio.Queue по именам info, fast и file; внутри находятся объекты MediaTask.
-QUEUES: dict[str, asyncio.Queue] = {}
+# Очереди задач по именам info, fast и file.
+QUEUES: dict[str, MediaTaskQueue] = {}
 # Запущенные корутины queue_worker(), которые последовательно берут задачи из очередей.
 WORKERS: list[asyncio.Task] = []
 
@@ -154,15 +174,10 @@ def serialize_task(task):
 
 def queue_position(task):
     """Позиция ожидания задачи с учётом свободных обработчиков очереди."""
-    # Очередь живёт только в одном event loop; _queue читается без await.
     queue = QUEUES.get(task.queue_name)
     if queue is None:
         return None
-    queued_position = None
-    for queue_index, item in enumerate(queue._queue, 1):
-        if item is task:
-            queued_position = queue_index
-            break
+    queued_position = queue.position(task)
     if queued_position is None:
         return None
     worker_count = {
@@ -183,9 +198,9 @@ def ensure_queues():
     if QUEUES:
         return
     QUEUES.update({
-        "info": asyncio.Queue(maxsize=settings.info_queue_size),
-        "fast": asyncio.Queue(maxsize=settings.fast_queue_size),
-        "file": asyncio.Queue(maxsize=settings.file_queue_size),
+        "info": MediaTaskQueue(maxsize=settings.info_queue_size),
+        "fast": MediaTaskQueue(maxsize=settings.fast_queue_size),
+        "file": MediaTaskQueue(maxsize=settings.file_queue_size),
     })
 
 
@@ -241,11 +256,7 @@ async def cancel_task(task_id: UUID):
     if task.status == "queued" and task.runner is None:
         queue = QUEUES.get(task.queue_name)
         if queue is not None:
-            try:
-                queue._queue.remove(task)
-                queue.task_done()
-            except ValueError:
-                pass
+            queue.discard(task)
     task.status = task.stage = "cancelling"
     # Ответ DELETE означает, что worker и его потомки уже завершены.
     if task.runner:
