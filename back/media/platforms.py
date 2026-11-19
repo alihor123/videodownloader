@@ -2,7 +2,7 @@ import re
 from urllib.parse import urlsplit, urlunsplit
 
 
-# Один список для проверки ссылок, worker и подсказок на фронте.
+# Домены и названия платформ для проверки ссылок и обработки видео.
 PLATFORMS = [
     {"id": "youtube", "name": "YouTube", "domains": ["youtube.com", "youtu.be"]},
     {"id": "rutube", "name": "Rutube", "domains": ["rutube.ru"]},
