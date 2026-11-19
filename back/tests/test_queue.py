@@ -48,7 +48,7 @@ class QueueContractTest(unittest.IsolatedAsyncioTestCase):
         try:
             self.assertGreaterEqual(len(manager.WORKERS), 1)
             task = manager.create_task("https://youtu.be/queued", mode="info")
-            self.assertIn(task, manager.QUEUES["info"]._queue)
+            self.assertEqual(manager.QUEUES["info"].position(task), 1)
         finally:
             await manager.shutdown_tasks(reaper)
 
