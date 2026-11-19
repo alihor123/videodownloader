@@ -12,26 +12,21 @@ import twitterIcon from '../../assets/icons/platform-twitter.svg?raw'
 import vkIcon from '../../assets/icons/platform-vk.svg?raw'
 import youtubeIcon from '../../assets/icons/platform-youtube.svg?raw'
 
-const platformIcons: Partial<Record<PlatformId, string>> = {
-  youtube: youtubeIcon,
-  rutube: rutubeIcon,
-  vk: vkIcon,
-  twitter: twitterIcon,
-  tiktok: tiktokIcon,
-  instagram: instagramIcon,
-}
-
-const SUPPORTED_PLATFORMS: Platform[] = [
-  { id: 'youtube', name: 'YouTube' },
-  { id: 'rutube', name: 'Rutube' },
-  { id: 'vk', name: 'VK Видео' },
-  { id: 'twitter', name: 'X / Twitter' },
-  { id: 'tiktok', name: 'TikTok' },
-  { id: 'instagram', name: 'Instagram' },
+const SUPPORTED_PLATFORMS: (Platform & { icon: string })[] = [
+  { id: 'youtube', name: 'YouTube', icon: youtubeIcon },
+  { id: 'rutube', name: 'Rutube', icon: rutubeIcon },
+  { id: 'vk', name: 'VK Видео', icon: vkIcon },
+  { id: 'twitter', name: 'X / Twitter', icon: twitterIcon },
+  { id: 'tiktok', name: 'TikTok', icon: tiktokIcon },
+  { id: 'instagram', name: 'Instagram', icon: instagramIcon },
 ]
 
+const platformNames = new Intl.ListFormat('ru').format(
+  SUPPORTED_PLATFORMS.map(({ name }) => name),
+)
+
 export function PlatformIcon({ platform }: { platform: PlatformId }) {
-  const svg = platformIcons[platform]
+  const svg = SUPPORTED_PLATFORMS.find(({ id }) => id === platform)?.icon
   return svg ? (
     <span
       className={styles.platformIcon}
@@ -76,7 +71,7 @@ export default function ServiceGuide() {
       <div className={styles.guideIntro}>
         <h1 id="guide-title">Скачать видео по ссылке</h1>
         <p>
-          a4loader помогает скачать публичные видео с YouTube, Rutube, VK Видео, TikTok, Instagram и X / Twitter.
+          a4loader помогает скачать публичные видео с {platformNames}.
           Вставьте ссылку, выберите качество — подготовим файл для загрузки.
         </p>
       </div>

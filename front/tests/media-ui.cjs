@@ -20,6 +20,12 @@ async function main() {
   await fs.mkdir('tmp/ui-checks', { recursive: true })
   await page.goto('http://127.0.0.1:5179')
   await page.getByText('VK Видео', { exact: true }).waitFor()
+  const platforms = page.getByLabel('Поддерживаемые платформы')
+  const names = ['YouTube', 'Rutube', 'VK Видео', 'X / Twitter', 'TikTok', 'Instagram']
+  assert.deepEqual(await platforms.locator('span:not([aria-hidden])').allTextContents(), names)
+  assert.equal(await platforms.locator('svg').count(), names.length)
+  const intro = await page.getByText(/a4loader помогает скачать публичные видео с/).textContent()
+  for (const name of names) assert.ok(intro.includes(name))
   assert.equal(await page.getByText('Вставляйте ссылку на публичное видео с любого из этих сервисов.', { exact: true }).count(), 0)
   await page.screenshot({ path: 'tmp/ui-checks/desktop.png', fullPage: true })
   await page.setViewportSize({ width: 390, height: 844 })
