@@ -68,7 +68,7 @@ async def create_download(body: DownloadRequest, request: Request):
     client_ip = (fast_limiter if body.format.fast else download_limiter)(request)
     validate_url(body.url)
     # Fast и file задачи расходятся по отдельным очередям после создания.
-    task = create_task(body.url, quality=body.format.height, task_id=body.task_id,
+    task = create_task(body.url, quality=body.format.quality, task_id=body.task_id,
                        requested_fast=body.format.fast, ip=client_ip,
                        user_agent=request.headers.get("user-agent"), kind=body.format.kind)
     return serialize_task(task)

@@ -59,8 +59,8 @@ export default function VideoResult({ video, selectedFormat, isDownloadBusy, onS
           <div className={styles.qualityList}>
             {video.formats.map((format) => (
               <button
-                className={`${styles.qualityItem} ${selectedFormat?.height === format.height ? styles.selected : ''}`}
-                key={`${format.height}-${format.ext}-${format.fast}`}
+                className={`${styles.qualityItem} ${selectedFormat?.quality === format.quality ? styles.selected : ''}`}
+                key={`${format.quality}-${format.ext}-${format.fast}`}
                 disabled={isDownloadBusy}
                 onClick={() => onSelectFormat(format)}
               >

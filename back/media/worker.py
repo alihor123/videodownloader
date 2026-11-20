@@ -257,7 +257,7 @@ def get_worker_options(payload, platform_id, progress_hook, source_address, prox
         if kind not in {"video", "audio"}:
             raise ValueError("Некорректный тип медиаформата")
         ext = get_output_ext(kind)
-        opts = get_download_ydl_opts(payload["height"], ext,
+        opts = get_download_ydl_opts(payload["quality"], ext,
                                      str(Path(payload["directory"]) / "output.%(ext)s"), progress_hook, kind)
         if ext == "mp4":
             # При fallback на WebM UI всё равно обещает MP4: меняем контейнер.
@@ -344,7 +344,7 @@ def main():
     if payload["mode"] == "info":
         emit_info_result(info, platform, payload["url"])
     elif payload["mode"] == "fast":
-        emit_fast_result(info, payload["height"], source_address, proxy_url)
+        emit_fast_result(info, payload["quality"], source_address, proxy_url)
     else:
         emit_download_result(info, Path(payload["directory"]))
 

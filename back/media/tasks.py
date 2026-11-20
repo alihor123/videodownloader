@@ -404,7 +404,7 @@ async def run_task(task):
             job = WindowsJob(process.pid)
         payload = {"url": task.url,
                    "mode": "fast" if task.delivery_mode == "fast" else task.mode,
-                   "height": task.quality, "kind": task.format_kind,
+                   "quality": task.quality, "kind": task.format_kind,
                    "directory": str(task.directory), "max_bytes": settings.media_max_bytes,
                    "proxy": get_proxy_url(task.proxy_key)}
         process.stdin.write((json.dumps(payload) + "\n").encode())

@@ -1,11 +1,19 @@
 import { Api } from './api'
 import type { MediaFormat, MediaInfo, MediaTask } from './media.types'
 
+type ApiMediaInfo = Omit<MediaInfo, 'formats'> & {
+  formats: (Omit<MediaFormat, 'quality'> & { height: number })[]
+}
+
 export const DOWNLOAD_TASK_POLL_INTERVAL_MS = 1_000
 
 export async function getVideoInfo(url: string, taskId: string, signal: AbortSignal): Promise<MediaInfo> {
   const response = await Api.fetchPost('/media/info', { url, task_id: taskId }, {}, signal, true)
-  return response.json() as Promise<MediaInfo>
+  const info = await response.json() as ApiMediaInfo
+  return {
+    ...info,
+    formats: info.formats.map(({ height, ...format }) => ({ ...format, quality: height })),
+  }
 }
 
 export function triggerDownload(downloadUrl: string): void {
@@ -25,7 +33,7 @@ export async function createDownloadTask(
 ): Promise<MediaTask> {
   const response = await Api.fetchPost(
     '/media/download-tasks',
-    { url, task_id: taskId, format: { height: format.height, kind: format.kind, fast: format.fast } },
+    { url, task_id: taskId, format: { height: format.quality, kind: format.kind, fast: format.fast } },
     { 429: 'Слишком много попыток. Попробуйте через минуту.' },
     signal,
     true,

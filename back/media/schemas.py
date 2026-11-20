@@ -12,7 +12,7 @@ class InfoRequest(BaseModel):
 
 class DownloadFormat(BaseModel):
     """Параметры выбранного качества, типа медиа и режима скачивания."""
-    height: int = Field(ge=1, le=4320)
+    quality: int = Field(alias="height", ge=1, le=4320)
     fast: bool = False
     kind: Literal["video", "audio"] = "video"
 

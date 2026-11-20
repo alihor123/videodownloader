@@ -25,12 +25,12 @@ def get_info_ydl_opts():
     return YDL_COMMON_OPTS.copy()
 
 
-def get_download_ydl_opts(height, file_ext, download_path, progress_hook, kind="video"):
+def get_download_ydl_opts(quality, file_ext, download_path, progress_hook, kind="video"):
     """Собирает настройки скачивания, обработки файла и уведомлений о прогрессе."""
     options = {
         **YDL_COMMON_OPTS,
         "quiet": False,
-        "format": get_download_format(height, kind),
+        "format": get_download_format(quality, kind),
         "outtmpl": download_path,
         "ffmpeg_location": str(settings.ffmpeg_path),
         "progress_hooks": [progress_hook],
@@ -40,7 +40,7 @@ def get_download_ydl_opts(height, file_ext, download_path, progress_hook, kind="
         options["postprocessors"] = [{
             "key": "FFmpegExtractAudio",
             "preferredcodec": file_ext,
-            "preferredquality": str(height),
+            "preferredquality": str(quality),
         }]
     else:
         options["merge_output_format"] = "mp4"

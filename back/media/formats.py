@@ -143,10 +143,11 @@ def get_video_height_range_filter(height):
     return f"[height>{max(lower_heights)}][height<={height}]"
 
 
-def get_download_format(height, kind="video"):
+def get_download_format(quality, kind="video"):
     """Формирует селектор yt-dlp с запасными вариантами для выбранного качества."""
     if kind == "audio":
-        return f"bestaudio[abr<={height}]/bestaudio"
+        return f"bestaudio[abr<={quality}]/bestaudio"
+    height = quality
     height_filter = get_video_height_range_filter(height)
     return (
         f"best{height_filter}[ext=mp4]/"
@@ -195,7 +196,8 @@ def build_format_list(info, extra_fast_heights=()):
                         "size": format_filesize(size), "fast": selector_height in fast_by_height})
 
     for quality, media_format in sorted(audio_by_quality.items(), key=lambda item: get_audio_bitrate(item[1])):
-        formats.append({"height": get_audio_bitrate(media_format), "kind": "audio", "label": quality, "ext": "mp3",
+        audio_bitrate = get_audio_bitrate(media_format)
+        formats.append({"height": audio_bitrate, "kind": "audio", "label": quality, "ext": "mp3",
                         "size": format_filesize(get_filesize(media_format)), "fast": False})
     return formats
 

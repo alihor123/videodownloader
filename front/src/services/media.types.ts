@@ -16,7 +16,7 @@ export interface Platform {
 }
 
 export interface MediaFormat {
-  height: number
+  quality: number
   kind: 'video' | 'audio'
   label: string
   ext: 'mp4' | 'mp3'
